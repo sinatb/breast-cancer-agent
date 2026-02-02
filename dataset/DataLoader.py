@@ -17,8 +17,7 @@ def create_dataloaders(
                        test_size=0.2,
                        image_size=(224, 224),
                        batch_size=64,
-                       num_workers=4,
-                       normalize=False):
+                       num_workers=4):
 
     df = pd.read_csv(os.path.join(DATASET_PATH, "train_labels.csv"))
     train_df, test_df = train_test_split(
@@ -31,10 +30,12 @@ def create_dataloaders(
     train_transforms = transforms.Compose([
         transforms.Grayscale(num_output_channels=3),
         transforms.ToTensor(),
+        transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
     ])
     test_transforms = transforms.Compose([
         transforms.Grayscale(num_output_channels=3),
         transforms.ToTensor(),
+        transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
     ])
 
     train_dataset = BreastCancerDataset(
@@ -66,7 +67,12 @@ def show_batch(loader):
     for i in range(min(4, len(images))):
         ax = plt.subplot(1, 4, i + 1)
         img = images[i].numpy().transpose((1, 2, 0))
-        img = np.clip(img, 0, 1)
+        mean = np.array([0.485, 0.456, 0.406])
+        std = np.array([0.229, 0.224, 0.225])
+        np_img = std * img + mean
+        np_img = np.clip(np_img, 0, 1)
+
+        img = np.clip(np_img, 0, 1)
 
         plt.imshow(img)
         plt.title(f"Label: {labels[i].item()}")
