@@ -1,0 +1,74 @@
+import os
+import pandas as pd
+import numpy as np
+import torchvision.transforms as transforms
+import matplotlib.pyplot as plt
+
+from torch.utils.data import DataLoader
+from BreastCancerDataset import BreastCancerDataset
+from sklearn.model_selection import train_test_split
+from dotenv import load_dotenv
+
+load_dotenv()
+DATASET_PATH = os.getenv("DATASET_PATH")
+
+def create_dataloaders(
+                       random_state = 1381,
+                       test_size=0.2,
+                       image_size=(224, 224),
+                       batch_size=64,
+                       num_workers=4,
+                       normalize=False):
+
+    df = pd.read_csv(os.path.join(DATASET_PATH, "train_labels.csv"))
+    train_df, test_df = train_test_split(
+        df,
+        test_size=test_size,
+        random_state=random_state,
+    )
+    print(f"Created Dataframes {train_df.shape}, {test_df.shape}")
+
+    train_transforms = transforms.Compose([
+        transforms.Grayscale(num_output_channels=3),
+        transforms.ToTensor(),
+    ])
+    test_transforms = transforms.Compose([
+        transforms.Grayscale(num_output_channels=3),
+        transforms.ToTensor(),
+    ])
+
+    train_dataset = BreastCancerDataset(
+        train_df,
+        image_size=image_size,
+        transform=train_transforms,
+    )
+    test_dataset = BreastCancerDataset(
+        dataframe=test_df,
+        image_size=image_size,
+        transform=test_transforms,
+    )
+
+    train_loader = DataLoader(train_dataset,
+                              batch_size=batch_size,
+                              num_workers=num_workers,
+                              shuffle=True)
+    test_loader = DataLoader(test_dataset,
+                             batch_size=batch_size,
+                             num_workers=num_workers,
+                             shuffle=False)
+    return train_loader, test_loader
+
+
+def show_batch(loader):
+    images, labels = next(iter(loader))
+
+    plt.figure(figsize=(16, 8))
+    for i in range(min(4, len(images))):
+        ax = plt.subplot(1, 4, i + 1)
+        img = images[i].numpy().transpose((1, 2, 0))
+        img = np.clip(img, 0, 1)
+
+        plt.imshow(img)
+        plt.title(f"Label: {labels[i].item()}")
+        plt.axis("off")
+    plt.show()
