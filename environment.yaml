@@ -1,42 +1,32 @@
 name: breast-cancer-agent
-
 channels:
   - pytorch
   - nvidia
-  - defaults
   - conda-forge
-
 dependencies:
+  # --- Core ---
   - python=3.10
   - pip
 
-  # --- PyTorch (GPU) ---
-  - pytorch=2.3.*
+  # --- Numerical stack (ABI safe) ---
+  - numpy=1.26
+  - pandas=2.1
+
+  # --- PyTorch + CUDA ---
+  - pytorch=2.1
   - torchvision
   - torchaudio
   - pytorch-cuda=12.1
 
-  # --- Scientific stack ---
-  - numpy
-  - pandas
-  - scipy
-  - scikit-learn
-
-  # --- Imaging / plotting ---
+  # --- Computer Vision ---
   - opencv
-  - pillow
+
+  # --- LLM / Agents ---
+  - langchain
+  - langgraph
+  - langgraph-prebuilt
+
+  # --- Utilities ---
   - matplotlib
-  - seaborn
-
-  # --- Dev / notebooks ---
-  - jupyter
-  - ipywidgets
   - tqdm
-  - mlflow
-
-  # --- Quality ---
-  - black
-  - flake8
-
-  - pip:
-      - ipympl
+  - pyyaml
