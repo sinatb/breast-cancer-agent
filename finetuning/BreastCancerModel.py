@@ -43,6 +43,3 @@ class BreastCancerModel(nn.Module):
 
     def forward(self, x):
         return self.base_model(x)
-
-def get_model(model_data: ModelData, freeze_backbone = False):
-    return BreastCancerModel(model_data, freeze_backbone)
