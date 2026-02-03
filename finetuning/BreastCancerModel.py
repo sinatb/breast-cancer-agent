@@ -46,3 +46,4 @@ class BreastCancerModel(nn.Module):
             return self.model.classifier
     def forward(self, x):
         return self.base_model(x)
+
