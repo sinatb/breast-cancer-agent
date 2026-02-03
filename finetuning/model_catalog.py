@@ -33,30 +33,30 @@ def get_default_catalog():
                                    acc=81.072,
                                    params=86.6,
                                    gflops=17.56,
-                                   adapter=ModelAdapter.VitAdapter)
+                                   adapter=ModelAdapter.VitAdapter())
 
     default_catalog.add_model_data(name="swin_s",
                                    acc=83.196,
                                    params=49.6,
                                    gflops=8.74,
-                                   adapter=ModelAdapter.SwinAdapter)
+                                   adapter=ModelAdapter.SwinAdapter())
 
     default_catalog.add_model_data(name="resnet50",
                                    acc=76.13,
                                    params=25.6,
                                    gflops=4.09,
-                                   adapter=ModelAdapter.ResNetAdapter)
+                                   adapter=ModelAdapter.ResNetAdapter())
 
     default_catalog.add_model_data(name="mobilenet_v3_large",
                                    acc=74.042,
                                    params=5.5,
                                    gflops=0.22,
-                                   adapter=ModelAdapter.MobileNetV3Adapter)
+                                   adapter=ModelAdapter.MobileNetV3Adapter())
 
     default_catalog.add_model_data(name="densenet161",
                                    acc=77.138,
                                    params=28.7,
                                    gflops=7.73,
-                                   adapter=ModelAdapter.DenseNetAdapter)
+                                   adapter=ModelAdapter.DenseNetAdapter())
 
     return default_catalog

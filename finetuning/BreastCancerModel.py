@@ -13,7 +13,7 @@ model_map = {
 
 def create_base_model(model : ModelData):
     new_model = model_map[model.name](weights="IMAGENET1K_V1")
-    new_model = model.adapter(new_model)
+    new_model = model.adapter.replace_head(new_model)
     return new_model
 
 class BreastCancerModel(nn.Module):
@@ -47,3 +47,5 @@ class BreastCancerModel(nn.Module):
     def forward(self, x):
         return self.base_model(x)
 
+def get_model(model_data: ModelData, freeze_backbone = False):
+    return BreastCancerModel(model_data, freeze_backbone)
