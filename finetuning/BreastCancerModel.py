@@ -11,39 +11,36 @@ model_map = {
 }
 
 
-def create_base_model(model : ModelData):
-    new_model = model_map[model.name](weights="IMAGENET1K_V1")
-    new_model = model.adapter.replace_head(new_model)
+def create_base_model(model_data : ModelData):
+    new_model = model_map[model_data.name](weights="IMAGENET1K_V1")
+    new_model = model_data.adapter.replace_head(new_model, num_classes=5)
     return new_model
 
 class BreastCancerModel(nn.Module):
     def __init__(self,
-                 model:ModelData,
+                 model_data:ModelData,
                  freeze_backbone = False):
         super().__init__()
-        self.mode_name = model.name
-        self.base_model = create_base_model(model)
+        self.model_name = model_data.name
+        self.adapter = model_data.adapter
+        self.base_model = create_base_model(model_data)
+        self.frozen_backbone = freeze_backbone
         if freeze_backbone:
-            self.__freeze_backbone()
+            self.freeze_backbone()
 
-    def __freeze_backbone(self):
+    def unfreeze_backbone(self):
+        for param in self.base_model.parameters():
+            param.requires_grad = True
+        self.frozen_backbone = False
+
+    def freeze_backbone(self):
         for param in self.base_model.parameters():
             param.requires_grad = False
-        classifier_head = self.__get_classifier()
+        classifier_head = self.adapter.get_classifier(self.base_model)
         for param in classifier_head.parameters():
             param.requires_grad = True
+        self.frozen_backbone = True
 
-    def __get_classifier(self):
-        if self.model_name.startswith("vit"):
-            return self.model.heads
-        elif self.model_name.startswith("swin"):
-            return self.model.head
-        elif self.model_name.startswith("resnet"):
-            return self.model.fc
-        elif self.model_name.startswith("densenet"):
-            return self.model.classifier
-        elif self.model_name.startswith("mobilenet"):
-            return self.model.classifier
     def forward(self, x):
         return self.base_model(x)
 
