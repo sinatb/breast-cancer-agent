@@ -1,6 +1,6 @@
 import torchvision.models as models
 from torch import nn
-from model_catalog import ModelData
+from ModelCatalog import ModelData
 
 model_map = {
     "vit_b_16" : models.vit_b_16,
