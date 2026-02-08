@@ -321,7 +321,9 @@ def _make_json_serializable(obj):
         return obj
 
 
-def load_checkpoint(checkpoint_path: str, model: BreastCancerModel, device: str = "cpu") -> Dict:
+def load_checkpoint(checkpoint_path: str,
+                    model: BreastCancerModel,
+                    device: str = "cuda" if torch.cuda.is_available() else "cpu") -> Dict:
     checkpoint = torch.load(checkpoint_path, map_location=device)
     model.load_state_dict(checkpoint["model_state_dict"])
 
