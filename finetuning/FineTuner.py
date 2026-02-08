@@ -29,12 +29,12 @@ def fine_tune(
         learning_rate: float = 1e-4,
         weight_decay: float = 1e-4,
         device: str = "cuda" if torch.cuda.is_available() else "cpu",
-        checkpoint_dir: str = "./checkpoints",
         verbose: bool = True,
 ) -> Dict:
 
     model = model.to(device)
     _apply_strategy(model, strategy)
+    checkpoint_dir = _generate_model_dir(model, strategy)
     os.makedirs(checkpoint_dir, exist_ok=True)
 
     model.train()
@@ -331,32 +331,7 @@ def load_checkpoint(checkpoint_path: str, model: BreastCancerModel, device: str 
         "timestamp": checkpoint["timestamp"],
     }
 
-
-def print_metrics_summary(metrics: Dict) -> None:
-    print("\n" + "=" * 80)
-    print("TRAINING METRICS SUMMARY")
-    print("=" * 80)
-
-    print(f"\nStrategy: {metrics['strategy']}")
-    print(f"Learning Rate: {metrics['learning_rate']}")
-    print(f"Number of Epochs Trained: {len(metrics['train_losses'])}")
-    print(f"Best Epoch: {metrics['best_epoch'] + 1}")
-
-    print("\n" + "-" * 80)
-    print("BEST VALIDATION METRICS")
-    print("-" * 80)
-    print(f"Accuracy: {metrics['best_val_accuracy']:.4f}")
-    print(f"F1 Score (Weighted): {metrics['best_val_f1']:.4f}")
-
-    if "best_epoch_metrics" in metrics:
-        best = metrics["best_epoch_metrics"]
-        print(f"F1 Score (Macro): {best['f1_macro']:.4f}")
-        print(f"Precision (Macro): {best['precision']:.4f}")
-        print(f"Recall (Macro): {best['recall']:.4f}")
-
-        print("\n" + "-" * 80)
-        print("CONFUSION MATRIX (Best Epoch)")
-        print("-" * 80)
-        print(best["confusion_matrix"])
-
-    print("\n" + "=" * 80)
+def _generate_model_dir(model : BreastCancerModel,
+                        strategy : FineTuneStrategy,
+                        base_dir : str = "../model_dir") -> str:
+    return f"{base_dir}/{model.model_name}-{strategy.name}"
