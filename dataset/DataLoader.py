@@ -5,7 +5,7 @@ import torchvision.transforms as transforms
 import matplotlib.pyplot as plt
 
 from torch.utils.data import DataLoader
-from BreastCancerDataset import BreastCancerDataset
+from .BreastCancerDataset import BreastCancerDataset
 from sklearn.model_selection import train_test_split
 from dotenv import load_dotenv
 
@@ -14,11 +14,11 @@ DATASET_PATH = os.getenv("DATASET_PATH")
 
 def create_dataloaders(
                        random_state = 1381,
-                       test_size=0.2,
+                       test_size=0.1,
+                       validation_size=0.1,
                        image_size=(224, 224),
                        batch_size=64,
-                       num_workers=4,
-                       normalize=False):
+                       num_workers=4):
 
     df = pd.read_csv(os.path.join(DATASET_PATH, "train_labels.csv"))
     train_df, test_df = train_test_split(
@@ -26,21 +26,34 @@ def create_dataloaders(
         test_size=test_size,
         random_state=random_state,
     )
-    print(f"Created Dataframes {train_df.shape}, {test_df.shape}")
+    val_size = validation_size / (1 - test_size)
+    train_df, val_df = train_test_split(
+        train_df,
+        test_size=val_size,
+        random_state=random_state,
+    )
+    print(f"Created Dataframes {train_df.shape}, {val_df.shape}, {test_df.shape}")
 
     train_transforms = transforms.Compose([
         transforms.Grayscale(num_output_channels=3),
         transforms.ToTensor(),
+        transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
     ])
     test_transforms = transforms.Compose([
         transforms.Grayscale(num_output_channels=3),
         transforms.ToTensor(),
+        transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
     ])
 
     train_dataset = BreastCancerDataset(
         train_df,
         image_size=image_size,
         transform=train_transforms,
+    )
+    val_dataset = BreastCancerDataset(
+        val_df,
+        image_size=image_size,
+        transform=test_transforms,
     )
     test_dataset = BreastCancerDataset(
         dataframe=test_df,
@@ -52,11 +65,15 @@ def create_dataloaders(
                               batch_size=batch_size,
                               num_workers=num_workers,
                               shuffle=True)
+    val_loader = DataLoader(val_dataset,
+                            batch_size=batch_size,
+                            num_workers=num_workers,
+                            shuffle=False)
     test_loader = DataLoader(test_dataset,
                              batch_size=batch_size,
                              num_workers=num_workers,
                              shuffle=False)
-    return train_loader, test_loader
+    return train_loader, val_loader,test_loader
 
 
 def show_batch(loader):
@@ -66,7 +83,12 @@ def show_batch(loader):
     for i in range(min(4, len(images))):
         ax = plt.subplot(1, 4, i + 1)
         img = images[i].numpy().transpose((1, 2, 0))
-        img = np.clip(img, 0, 1)
+        mean = np.array([0.485, 0.456, 0.406])
+        std = np.array([0.229, 0.224, 0.225])
+        np_img = std * img + mean
+        np_img = np.clip(np_img, 0, 1)
+
+        img = np.clip(np_img, 0, 1)
 
         plt.imshow(img)
         plt.title(f"Label: {labels[i].item()}")

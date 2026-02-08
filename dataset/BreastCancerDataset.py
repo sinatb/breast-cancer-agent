@@ -1,5 +1,5 @@
 from PIL import Image
-from preprocess import preprocess
+from .preprocess import preprocess
 from torch.utils.data import Dataset
 
 class BreastCancerDataset(Dataset):
