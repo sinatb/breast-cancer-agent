@@ -1,0 +1,26 @@
+# Breast Cancer Agent
+This is the report for the final project of the Deep Learning course at IUST. In this project a Breast Cancer detection
+agent has been implemented which fine-tunes different models form a model catalog with 3 different strategies. This 
+report has been written in a hierarchical fashion. Meaning this file is just a starting point, In depth analysis of each
+part is done in the respective notebook.
+
+## Overall Architecture
+This project consists of 3 packages. `dataset`, `agent` and `finetuning`. The `utils` package contains some simple
+utilities for getting a model.
+
+The `dataset` package controls how the data is split between train, validation and test
+sets. The preprocessing part of this project is also done in the `dataset` package. For more information about the 
+nooks and crannies of the implementation and overall challenges I suggest reading `dataset_analysis.ipynb`.
+
+The `finetuning` package implements simple finetuning utility used by the agent down the line. This includes, simple
+train and validation loops and the creation of `BreastCancerModel`. This model is actually something I am quite proud of,
+so I suggest reading `finetuning_analysis.ipynb` to gain a better understanding of how the package works.
+
+The final package is `agent`. In this package the tools and the orchestrator have been implemented. To gain better insight
+of this package please refer to `agent_analysis.md`.
+
+## Further Work (done before making repo public)
+1. Adding ensemble support.
+2. Fixing the low accuracy and precision problem.
+3. Adding UI for the chat and the overall system.
+4. Creating the final model for test.
