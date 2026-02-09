@@ -1,15 +1,11 @@
 import os
-
-from langchain_core.chat_history import InMemoryChatMessageHistory
-
+from langchain_core.messages import SystemMessage, ToolMessage, HumanMessage, BaseMessage
 from agent import AgentBudget
 from dotenv import load_dotenv
 from finetuning import ModelCatalog
 from agent.ExperimentMemory import ExperimentMemory
 from agent.tools import create_agent_tools
 from langchain_openai import ChatOpenAI
-from langchain.agents import create_agent
-from langchain_core.runnables import RunnableWithMessageHistory
 
 SYSTEM_PROMPT = """You are an expert Machine Learning Orchestrator Agent for a breast cancer classification project.
 
@@ -24,6 +20,15 @@ Your goal is to efficiently explore the space of pre-trained models and fine-tun
 ## BUDGET CONSTRAINTS:
 - Maximum 10 experiments
 - You MUST be strategic and efficient
+
+## CRITICAL: ONE EXPERIMENT AT A TIME
+**YOU MUST RUN EXPERIMENTS SEQUENTIALLY, NOT IN PARALLEL**
+- Run ONE experiment using run_experiment
+- Wait for results and analyze them
+- Use get_experience to review what you learned
+- THEN decide on the next experiment
+- NEVER call run_experiment multiple times in the same response
+- NEVER try to run experiments in parallel
 
 ## DECISION FRAMEWORK:
 
@@ -93,18 +98,19 @@ For each decision, structure your response as:
 - What do we expect to happen?
 
 **Action**:
-- Call run_experiment with specific parameters
+- Call run_experiment with specific parameters (ONE AT A TIME)
 - Explain parameter choices
 
 **Budget Check**:
 - Verify remaining budget before expensive runs
 
 ## IMPORTANT RULES:
-1. ALWAYS check experience before proposing new experiments
-2. NEVER waste budget on random guessing
-3. NEVER run same experiment twice
-4. ALWAYS explain your reasoning
-5. STOP when budget exhausted or diminishing returns observed
+1. **ALWAYS run experiments ONE AT A TIME** - wait for results before the next
+2. ALWAYS check experience before proposing new experiments
+3. NEVER waste budget on random guessing
+4. NEVER run same experiment twice
+5. ALWAYS explain your reasoning
+6. STOP when budget exhausted or diminishing returns observed
 
 ## COMMUNICATION STYLE:
 - Be concise and scientific
@@ -113,39 +119,73 @@ For each decision, structure your response as:
 - Acknowledge uncertainty when present
 
 Remember: You're managing a REAL budget. Every experiment counts. Be strategic, learn fast, and converge to the best solution efficiently.
+
+After each experiment completes, I will prompt you to continue. You should then analyze results and propose the next experiment.
 """
 
 class Orchestrator(object):
     def __init__(self):
+        # env loading
         load_dotenv()
         self.base_url = os.getenv("BASE_URL")
         self.api_key = os.getenv("API_KEY")
+        if self.api_key is None:
+            raise ValueError("API_KEY not found in environment variables")
+
+        # basic var init
         self.model = "gpt-4.1-mini"
         self.model_catalog = ModelCatalog.get_default_catalog()
         self.budget = AgentBudget.AgentBudget()
         self.memory = ExperimentMemory()
-        self.tools = create_agent_tools(catalog=self.model_catalog, budget=self.budget, memory=self.memory)
+        # tool creation
+        self.tools = create_agent_tools(catalog=self.model_catalog,
+                                        budget=self.budget,
+                                        memory=self.memory)
+        # llm init
         self.llm = ChatOpenAI(
-            model = self.model,
-            api_key = self.api_key,
-            base_url = self.base_url
-        )
+            model=self.model,
+            api_key=self.api_key,
+            base_url=self.base_url,
+            temperature=0,
+        ).bind_tools(self.tools)
 
-        self.agent = create_agent(
-            tools = self.tools,
-            model = self.llm,
-            system_prompt=SYSTEM_PROMPT,
-        )
+        self.chat_history: list[BaseMessage] = [
+            SystemMessage(content=SYSTEM_PROMPT)
+        ]
 
-        self.chat_history = InMemoryChatMessageHistory()
+        print(f"Orchestrator initialized:")
+        print(f"  Model: {self.model}")
+        print(f"  Max experiments: {10}")
+        print(f"  Available tools: {[tool.name for tool in self.tools]}")
 
-        self.agent_with_memory = RunnableWithMessageHistory(
-            self.agent,
-            lambda session_id: self.chat_history,
-            input_messages_key="input",
-            history_messages_key="chat_history",
-        )
-    def invoke(self, message):
-        result = self.agent_with_memory.invoke(
-            {"input": message},
-        )
+
+    def invoke(self, user_message: str):
+        self.chat_history.append(HumanMessage(content=user_message))
+
+        response = self.llm.invoke(self.chat_history)
+
+        tool_calls = response.tool_calls or []
+
+        if len(tool_calls) > 1:
+            raise RuntimeError("More than one tool call in a single step")
+
+        if tool_calls:
+            self.chat_history.append(response)
+
+            tool_call = tool_calls[0]
+            tool_call_id = tool_call["id"]
+
+            tool = {t.name: t for t in self.tools}[tool_call["name"]]
+            result = tool.invoke(tool_call["args"])
+
+            self.chat_history.append(
+                ToolMessage(
+                    tool_call_id=tool_call_id,
+                    content=str(result),
+                )
+            )
+
+            return {"tool": tool_call["name"], "result": result}
+
+        self.chat_history.append(response)
+        return {"output": response.content}

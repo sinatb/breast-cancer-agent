@@ -7,7 +7,6 @@ from dataset.DataLoader import create_dataloaders
 from utils.model_utils import get_model
 from agent.ExperimentMemory import ExperimentMemory
 from agent.AgentBudget import AgentBudget
-from typing import Literal
 
 ## TOOL INPUT DEFINITION
 class GetModelsInput(BaseModel):
@@ -23,7 +22,6 @@ class RunExperimentInput(BaseModel):
     weight_decay: float = Field(description="Weight decay (e.g., 1e-4, 3e-4, 1e-3)")
     epochs: int = Field(description="Number of epochs to train (max 20)")
     batch_size: int = Field(default=8, description="Batch size for training")
-    notes: str = Field(default="", description="Optional notes about this experiment")
 
 class GetExperienceInput(BaseModel):
     pass
@@ -86,6 +84,10 @@ def create_agent_tools(catalog:ModelCatalog, budget:AgentBudget, memory:Experime
         summary = (
             f"✓ Experiment  completed\n"
             f"Results:\n"
+            f"  Model name: {model_name}\n"
+            f"  Strategy: {strategy}\n"
+            f"  Learning rate: {learning_rate}\n"
+            f"  Epochs: {epochs}\n"
             f"  Val Acc:   {result.accuracy:.4f} | Loss: {result.loss:.4f}\n"
             f"  Val Recall: {result.recall:.4f}"
             f"  Val Precision: {result.precision:.4f}"

@@ -5,7 +5,7 @@ import torch.optim as optim
 from torch.optim.lr_scheduler import CosineAnnealingLR
 from torch.utils.data import DataLoader
 from typing import Dict, Tuple, List
-from FineTuneResult import FineTuneResult
+from .FineTuneResult import FineTuneResult
 import os
 import json
 from datetime import datetime
@@ -17,10 +17,13 @@ from sklearn.metrics import (
     recall_score,
 )
 
-from BreastCancerModel import BreastCancerModel
-from FineTuneStrategy import FineTuneStrategy
+from .BreastCancerModel import BreastCancerModel
+from .FineTuneStrategy import FineTuneStrategy
 from peft import get_peft_model, LoraConfig, TaskType
+from dotenv import load_dotenv
 
+load_dotenv()
+MODEL_DIR = os.getenv("MODEL_DIR")
 
 def fine_tune(
         model: BreastCancerModel,
@@ -36,7 +39,7 @@ def fine_tune(
 
     model = model.to(device)
     _apply_strategy(model, strategy)
-    checkpoint_dir = _generate_model_dir(model, strategy)
+    checkpoint_dir = _generate_model_dir(model, strategy, learning_rate, weight_decay, num_epochs)
     os.makedirs(checkpoint_dir, exist_ok=True)
 
     model.train()
@@ -50,11 +53,14 @@ def fine_tune(
     loss_fn = nn.CrossEntropyLoss(weight=class_weights)
     best_result = FineTuneResult(model.model_name,
                                  strategy.name,
-                                 checkpoint_dir)
+                                 checkpoint_dir,
+                                 learning_rate,
+                                 weight_decay,
+                                 num_epochs)
 
     if verbose:
-        print(f"Starting fine-tuning with strategy: {strategy.name}")
-        print(f"Device: {device}, Epochs: {num_epochs}, LR: {learning_rate}")
+        print(f"Starting fine-tuning with strategy: {strategy.name} of model {model.model_name}.")
+        print(f"Device: {device}, Epochs: {num_epochs}, LR: {learning_rate}, WD: {weight_decay}")
         print("-" * 80)
 
     for epoch in range(num_epochs):
@@ -65,6 +71,9 @@ def fine_tune(
         current_result = FineTuneResult(model.model_name,
                                         strategy.name,
                                         checkpoint_dir,
+                                        learning_rate,
+                                        weight_decay,
+                                        num_epochs,
                                         val_metrics["loss"],
                                         val_metrics["accuracy"],
                                         val_metrics["precision"],
@@ -90,8 +99,7 @@ def fine_tune(
 
         if current_result.loss < best_result.loss:
             best_result = copy.deepcopy(current_result)
-            epochs_without_improvement = 0
-            checkpoint_path = _save_checkpoint(
+            _save_checkpoint(
                 model, optimizer, epoch, best_result.to_dict(), checkpoint_dir, is_best=True
             )
 
@@ -265,7 +273,6 @@ def _save_checkpoint(
 
     filename = f"best_model.pt" if is_best else f"checkpoint_epoch_{epoch}.pt"
     filepath = os.path.join(checkpoint_dir, filename)
-
     torch.save(checkpoint, filepath)
     if is_best:
         metrics_path = os.path.join(checkpoint_dir, "best_model_metrics.json")
@@ -306,5 +313,8 @@ def load_checkpoint(checkpoint_path: str,
 
 def _generate_model_dir(model : BreastCancerModel,
                         strategy : FineTuneStrategy,
-                        base_dir : str = "../model_dir") -> str:
-    return f"{base_dir}/{model.model_name}-{strategy.name}"
+                        learning_rate : float,
+                        weight_decay : float,
+                        epochs : int,
+                        base_dir : str = MODEL_DIR) -> str:
+    return f"{base_dir}/{model.model_name}-{strategy.name}--LR-'{learning_rate}'--WD-'{weight_decay}'--epochs-'{epochs}'"
