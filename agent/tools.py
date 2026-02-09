@@ -7,6 +7,8 @@ from dataset.DataLoader import create_dataloaders
 from utils.model_utils import get_model
 from agent.ExperimentMemory import ExperimentMemory
 from agent.AgentBudget import AgentBudget
+import warnings
+warnings.filterwarnings("ignore", category=UserWarning, module="torch.utils.cpp_extension")
 
 ## TOOL INPUT DEFINITION
 class GetModelsInput(BaseModel):

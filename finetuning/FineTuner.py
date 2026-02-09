@@ -21,7 +21,8 @@ from .BreastCancerModel import BreastCancerModel
 from .FineTuneStrategy import FineTuneStrategy
 from peft import get_peft_model, LoraConfig, TaskType
 from dotenv import load_dotenv
-
+import warnings
+warnings.filterwarnings("ignore", category=UserWarning, module="torch.utils.cpp_extension")
 load_dotenv()
 MODEL_DIR = os.getenv("MODEL_DIR")
 
@@ -97,7 +98,7 @@ def fine_tune(
             print(f"  Val Recall: {val_metrics['recall']:.4f}")
             print("-" * 80)
 
-        if current_result.loss < best_result.loss:
+        if current_result.accuracy > best_result.accuracy:
             best_result = copy.deepcopy(current_result)
             _save_checkpoint(
                 model, optimizer, epoch, best_result.to_dict(), checkpoint_dir, is_best=True

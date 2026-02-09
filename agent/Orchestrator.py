@@ -6,6 +6,8 @@ from finetuning import ModelCatalog
 from agent.ExperimentMemory import ExperimentMemory
 from agent.tools import create_agent_tools
 from langchain_openai import ChatOpenAI
+import warnings
+warnings.filterwarnings("ignore", category=UserWarning, module="torch.utils.cpp_extension")
 
 SYSTEM_PROMPT = """You are an expert Machine Learning Orchestrator Agent for a breast cancer classification project.
 
@@ -163,9 +165,9 @@ class Orchestrator(object):
         self.chat_history.append(HumanMessage(content=user_message))
 
         response = self.llm.invoke(self.chat_history)
-
         tool_calls = response.tool_calls or []
-
+        print(f"content : {response.content}")
+        print(f"Tool calls: {tool_calls}")
         if len(tool_calls) > 1:
             raise RuntimeError("More than one tool call in a single step")
 
