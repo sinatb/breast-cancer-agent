@@ -1,9 +1,11 @@
 import torch
+import copy
 import torch.nn as nn
 import torch.optim as optim
 from torch.optim.lr_scheduler import CosineAnnealingLR
 from torch.utils.data import DataLoader
 from typing import Dict, Tuple, List
+from .FineTuneResult import FineTuneResult
 import os
 import json
 from datetime import datetime
@@ -15,10 +17,14 @@ from sklearn.metrics import (
     recall_score,
 )
 
-from BreastCancerModel import BreastCancerModel
-from FineTuneStrategy import FineTuneStrategy
+from .BreastCancerModel import BreastCancerModel
+from .FineTuneStrategy import FineTuneStrategy
 from peft import get_peft_model, LoraConfig, TaskType
-
+from dotenv import load_dotenv
+import warnings
+warnings.filterwarnings("ignore", category=UserWarning, module="torch.utils.cpp_extension")
+load_dotenv()
+MODEL_DIR = os.getenv("MODEL_DIR")
 
 def fine_tune(
         model: BreastCancerModel,
@@ -30,11 +36,11 @@ def fine_tune(
         weight_decay: float = 1e-4,
         device: str = "cuda" if torch.cuda.is_available() else "cpu",
         verbose: bool = True,
-) -> Dict:
+) -> FineTuneResult:
 
     model = model.to(device)
     _apply_strategy(model, strategy)
-    checkpoint_dir = _generate_model_dir(model, strategy)
+    checkpoint_dir = _generate_model_dir(model, strategy, learning_rate, weight_decay, num_epochs)
     os.makedirs(checkpoint_dir, exist_ok=True)
 
     model.train()
@@ -46,54 +52,38 @@ def fine_tune(
         print(f"class_weights: {class_weights}\n")
 
     loss_fn = nn.CrossEntropyLoss(weight=class_weights)
-
-    metrics = {
-        "train_losses": [],
-        "val_losses": [],
-        "val_accuracies": [],
-        "val_f1_scores": [],
-        "val_precision_scores": [],
-        "val_recall_scores": [],
-        "val_f1_macro": [],
-        "val_f1_weighted": [],
-        "val_confusion_matrices": [],
-        "best_val_accuracy": 0.0,
-        "best_val_f1": 0.0,
-        "best_epoch": 0,
-        "strategy": strategy.name,
-        "learning_rate": learning_rate,
-    }
-
-    best_val_loss = float("inf")
-    epochs_without_improvement = 0
+    best_result = FineTuneResult(model.model_name,
+                                 strategy.name,
+                                 checkpoint_dir,
+                                 learning_rate,
+                                 weight_decay,
+                                 num_epochs)
 
     if verbose:
-        print(f"Starting fine-tuning with strategy: {strategy.name}")
-        print(f"Device: {device}, Epochs: {num_epochs}, LR: {learning_rate}")
+        print(f"Starting fine-tuning with strategy: {strategy.name} of model {model.model_name}.")
+        print(f"Device: {device}, Epochs: {num_epochs}, LR: {learning_rate}, WD: {weight_decay}")
         print("-" * 80)
 
     for epoch in range(num_epochs):
         # Training
         train_loss = _train_epoch(model, train_loader, optimizer, loss_fn, device)
-        metrics["train_losses"].append(train_loss)
 
         val_metrics = _validate(model, val_loader, loss_fn, device)
+        current_result = FineTuneResult(model.model_name,
+                                        strategy.name,
+                                        checkpoint_dir,
+                                        learning_rate,
+                                        weight_decay,
+                                        num_epochs,
+                                        val_metrics["loss"],
+                                        val_metrics["accuracy"],
+                                        val_metrics["precision"],
+                                        val_metrics["recall"],
+                                        val_metrics["f1_micro"],
+                                        val_metrics["f1_macro"],
+                                        val_metrics["f1_weighted"],
+                                        val_metrics["confusion_matrix"].tolist())
 
-        metrics["val_losses"].append(val_metrics["loss"])
-        metrics["val_accuracies"].append(val_metrics["accuracy"])
-        metrics["val_f1_scores"].append(val_metrics["f1_micro"])
-        metrics["val_precision_scores"].append(val_metrics["precision"])
-        metrics["val_recall_scores"].append(val_metrics["recall"])
-        metrics["val_f1_macro"].append(val_metrics["f1_macro"])
-        metrics["val_f1_weighted"].append(val_metrics["f1_weighted"])
-        metrics["val_confusion_matrices"].append(val_metrics["confusion_matrix"].tolist())
-
-        if val_metrics["accuracy"] > metrics["best_val_accuracy"]:
-            metrics["best_val_accuracy"] = val_metrics["accuracy"]
-            metrics["best_epoch"] = epoch
-
-        if val_metrics["f1_weighted"] > metrics["best_val_f1"]:
-            metrics["best_val_f1"] = val_metrics["f1_weighted"]
 
         scheduler.step()
 
@@ -108,30 +98,21 @@ def fine_tune(
             print(f"  Val Recall: {val_metrics['recall']:.4f}")
             print("-" * 80)
 
-        if val_metrics["loss"] < best_val_loss:
-            best_val_loss = val_metrics["loss"]
-            epochs_without_improvement = 0
-            checkpoint_path = _save_checkpoint(
-                model, optimizer, epoch, metrics, checkpoint_dir, is_best=True
+        if current_result.accuracy > best_result.accuracy:
+            best_result = copy.deepcopy(current_result)
+            _save_checkpoint(
+                model, optimizer, epoch, best_result.to_dict(), checkpoint_dir, is_best=True
             )
-            metrics["best_model_path"] = checkpoint_path
-
-            metrics["best_epoch_metrics"] = val_metrics
-        else:
-            epochs_without_improvement += 1
 
     if verbose:
         print("\n" + "=" * 80)
         print("Training completed!")
-        print(f"Best Val Accuracy: {metrics['best_val_accuracy']:.4f} at Epoch {metrics['best_epoch'] + 1}")
-        print(f"Best Val F1 (Weighted): {metrics['best_val_f1']:.4f}")
+        print(f"Best Val Accuracy: {best_result.accuracy:.4f}")
+        print(f"Best Val F1 (Weighted): {best_result.f1_weighted:.4f}")
         print("=" * 80)
+        print(best_result.confusion_matrix)
 
-        if "best_epoch_metrics" in metrics:
-            print("\nBest Epoch Confusion Matrix:")
-            print(metrics["best_epoch_metrics"]["confusion_matrix"])
-
-    return metrics
+    return best_result
 
 
 def _apply_strategy(model: BreastCancerModel, strategy: FineTuneStrategy) -> None:
@@ -293,9 +274,7 @@ def _save_checkpoint(
 
     filename = f"best_model.pt" if is_best else f"checkpoint_epoch_{epoch}.pt"
     filepath = os.path.join(checkpoint_dir, filename)
-
     torch.save(checkpoint, filepath)
-
     if is_best:
         metrics_path = os.path.join(checkpoint_dir, "best_model_metrics.json")
         # Create a JSON-serializable copy of metrics
@@ -335,5 +314,8 @@ def load_checkpoint(checkpoint_path: str,
 
 def _generate_model_dir(model : BreastCancerModel,
                         strategy : FineTuneStrategy,
-                        base_dir : str = "../model_dir") -> str:
-    return f"{base_dir}/{model.model_name}-{strategy.name}"
+                        learning_rate : float,
+                        weight_decay : float,
+                        epochs : int,
+                        base_dir : str = MODEL_DIR) -> str:
+    return f"{base_dir}/{model.model_name}-{strategy.name}--LR-'{learning_rate}'--WD-'{weight_decay}'--epochs-'{epochs}'"

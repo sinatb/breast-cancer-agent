@@ -1,4 +1,4 @@
-import ModelAdapter
+from finetuning import ModelAdapter
 
 class ModelData(object):
     def __init__(self ,name:str ,params:float, gflops:float, acc:float, adapter:ModelAdapter):
