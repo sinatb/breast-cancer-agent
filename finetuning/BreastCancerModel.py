@@ -46,5 +46,14 @@ class BreastCancerModel(nn.Module):
             param.requires_grad = True
         self.frozen_backbone = True
 
+    def train(self, mode: bool = True):
+        super().train(mode)
+        if mode and self.frozen_backbone:
+            head_modules = set(self.adapter.get_classifier(self.base_model).modules())
+            for module in self.base_model.modules():
+                if isinstance(module, nn.modules.batchnorm._BatchNorm) and module not in head_modules:
+                    module.eval()
+        return self
+
     def forward(self, x):
         return self.base_model(x)

@@ -43,6 +43,21 @@ def test_full_ft_trains_everything(name, make_model, random_loader):
     assert not unchanged, f"parameters not updated under FULL_FT: {sorted(unchanged)}"
 
 
+def test_full_ft_updates_batchnorm_stats(name, make_model, random_loader):
+    """The C4 fix freezes BatchNorm stats only for a frozen backbone, so FULL_FT must still update them."""
+    model = make_model(name)
+    apply_strategy(model, FineTuneStrategy.FULL_FT)
+    running_means = [n for n, _ in model.named_buffers() if n.endswith("running_mean")]
+    if not running_means:
+        pytest.skip(f"{name} has no BatchNorm")
+
+    before = snapshot_buffers(model)
+    train_one_epoch(model, random_loader)
+
+    unchanged = [n for n in running_means if torch.equal(before[n], dict(model.named_buffers())[n])]
+    assert not unchanged, f"{len(unchanged)} BatchNorm stats not updated under FULL_FT, e.g. {unchanged[:3]}"
+
+
 # --------------------------------------------------------------------------- LINEAR_PROBE
 
 
