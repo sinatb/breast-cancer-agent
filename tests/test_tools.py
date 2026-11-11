@@ -130,5 +130,33 @@ def test_failed_experiment_releases_memory_and_costs_nothing(tools, training_stu
     assert memory.conducted_experiments == []
 
 
+def test_agent_sees_training_accuracy_and_the_confusion_matrix(tools):
+    """Q2: both were missing from what the tools return."""
+    result = tools["run_experiment"].invoke(VALID_ARGS)
+    experience = tools["get_experience_summary"].invoke({})
+
+    assert "Train Acc: 0.8750" in result
+    assert "[[7, 1], [2, 5]]" in result
+    assert "0.875" in experience
+    assert "[[7, 1], [2, 5]]" in experience
+
+
+def test_all_images_are_used_by_default(tools, training_stubs):
+    tools["run_experiment"].invoke(VALID_ARGS)
+
+    assert training_stubs.loader_kwargs == [{"samples_per_class": None}]
+
+
+def test_sample_size_reaches_the_loaders(training_stubs, settings, budget, memory):
+    created = create_agent_tools(
+        catalog=get_default_catalog(), budget=budget, memory=memory, settings=settings, samples_per_class=3
+    )
+    run_experiment = {tool.name: tool for tool in created}["run_experiment"]
+
+    run_experiment.invoke(VALID_ARGS)
+
+    assert training_stubs.loader_kwargs == [{"samples_per_class": 3}]
+
+
 def test_finish_acknowledges_the_reason(tools):
     assert "budget spent" in tools["finish"].invoke({"reason": "budget spent"})

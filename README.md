@@ -11,8 +11,12 @@ Dependencies are managed with [uv](https://docs.astral.sh/uv/) through `pyprojec
 ```bash
 uv sync
 uv run python verification.py   # expect "CUDA available: False"
-uv run python main.py
+cp .env.example .env            # then put the dataset in data/ (or point DATASET_PATH at it)
+uv run python main.py --smoke   # check the setup, no API key needed
 ```
+
+The dataset folder needs `images/` and `train_labels.csv`. Settings are described in `.env.example`; the agent also
+needs `API_KEY`, while the smoke run and the notebooks do not.
 
 **Kaggle (GPU).** Kaggle already ships a CUDA build of PyTorch, so only the other dependencies are installed, into
 the system Python:
@@ -37,8 +41,13 @@ the step limit is reached. A failed tool call is reported to the agent instead o
 | `--approve` | Ask before each experiment. Answering anything but `y` ends the session. |
 | `--max-experiments N` | Experiment budget (default 10). |
 | `--max-steps N` | Maximum number of LLM replies (default 40). |
+| `--smoke` | Check the setup instead: a scripted stand-in for the LLM trains MobileNetV3 and ResNet-50 for 2 epochs each on 16 images per class. It needs no API key and takes a few minutes on a CPU. It ends with `Smoke run passed.`, or exits with an error. Its numbers mean nothing. |
 
 The chat history is written to `history.txt` inside `MODEL_DIR` when the session ends, including after a crash.
+The first run downloads pretrained weights (about 125 MB for the smoke run).
+
+The notebooks read the same `.env`. To check that `finetuning_analysis.ipynb` runs without training for hours, set
+`QUICK_CHECK = True` in its first cell.
 
 ## Overall Architecture
 This project consists of 3 packages. `dataset`, `agent` and `finetuning`. The `utils` package contains some simple

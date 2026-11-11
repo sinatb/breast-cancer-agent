@@ -22,3 +22,7 @@ def split_dataframe(
         random_state=random_state,
     )
     return train_df, val_df, test_df
+
+
+def sample_per_class(df: pd.DataFrame, samples_per_class: int) -> pd.DataFrame:
+    return df.groupby("label", sort=False).head(samples_per_class)

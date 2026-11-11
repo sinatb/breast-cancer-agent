@@ -86,6 +86,30 @@ def test_class_weights_do_not_load_images(make_model, tmp_path):
 # --------------------------------------------------------------------------- labels and inputs
 
 
+def test_train_epoch_reports_training_accuracy():
+    """Q2: the agent is told to compare train and validation accuracy, so training accuracy must exist."""
+    model = nn.Linear(5, 5, bias=False)
+    with torch.no_grad():
+        model.weight.copy_(torch.eye(5))
+    labels = torch.tensor([0, 1, 2, 3])
+    images = nn.functional.one_hot(torch.tensor([0, 1, 2, 4]), 5).float() * 10  # the last one is predicted wrong
+    optimizer = torch.optim.SGD(model.parameters(), lr=0.0)
+
+    loss, accuracy = _train_epoch(model, [(images, labels)], optimizer, nn.CrossEntropyLoss(), "cpu")
+
+    assert accuracy == 0.75
+    assert loss > 0
+
+
+def test_result_carries_training_metrics(make_model, tmp_path):
+    result, _, _ = _run(make_model("resnet50"), FineTuneStrategy.LINEAR_PROBE, tmp_path, epochs=2)
+
+    assert 0.0 <= result.train_accuracy <= 1.0
+    assert 0.0 < result.train_loss < float("inf")
+    assert "train_accuracy" in result.get_summary()
+    assert "confusion_matrix" in result.get_summary()
+
+
 def test_validate_treats_labels_as_class_indices():
     """Labels are 0-based from the dataset on; the loop must not shift them again."""
     labels = torch.arange(5)

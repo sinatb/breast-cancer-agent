@@ -4,7 +4,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from dataset.splits import split_dataframe
+from dataset.splits import sample_per_class, split_dataframe
 
 
 def test_split_sizes(labels_df):
@@ -66,3 +66,24 @@ def test_split_is_stratified(labels_df, split_index, split_name):
 
     off = (actual - expected).abs()
     assert (off <= 1).all(), f"{split_name} class counts {actual.to_dict()} vs expected {expected.round(1).to_dict()}"
+
+
+def test_sample_per_class_takes_the_same_number_from_every_class(labels_df):
+    sample = sample_per_class(labels_df, 10)
+
+    assert sample["label"].value_counts().to_dict() == {label: 10 for label in range(1, 6)}
+    assert set(sample["filename"]) <= set(labels_df["filename"])
+
+
+def test_sample_per_class_is_deterministic_and_keeps_rows_intact(labels_df):
+    first, second = sample_per_class(labels_df, 4), sample_per_class(labels_df, 4)
+
+    pd.testing.assert_frame_equal(first, second)
+    pd.testing.assert_frame_equal(first, labels_df.loc[first.index])
+
+
+def test_sample_per_class_keeps_small_classes_whole(labels_df):
+    sample = sample_per_class(labels_df, 60)
+
+    assert (sample["label"] == 5).sum() == 48
+    assert (sample["label"] == 1).sum() == 60

@@ -2,7 +2,6 @@ import copy
 import json
 import os
 import uuid
-import warnings
 from collections.abc import Sequence
 from datetime import datetime
 from pathlib import Path
@@ -24,8 +23,6 @@ from torch.utils.data import DataLoader
 from .BreastCancerModel import BreastCancerModel
 from .FineTuneResult import FineTuneResult
 from .FineTuneStrategy import FineTuneStrategy
-
-warnings.filterwarnings("ignore", category=UserWarning, module="torch.utils.cpp_extension")
 
 LORA_SETTINGS = {"r": 16, "lora_alpha": 32, "lora_dropout": 0.1, "bias": "none"}
 
@@ -70,7 +67,7 @@ def fine_tune(
 
     for epoch in range(num_epochs):
         # Training
-        train_loss = _train_epoch(model, train_loader, optimizer, loss_fn, device)
+        train_loss, train_accuracy = _train_epoch(model, train_loader, optimizer, loss_fn, device)
 
         val_metrics = _validate(model, val_loader, loss_fn, device)
         current_result = FineTuneResult(model.model_name,
@@ -86,7 +83,9 @@ def fine_tune(
                                         val_metrics["f1_micro"],
                                         val_metrics["f1_macro"],
                                         val_metrics["f1_weighted"],
-                                        val_metrics["confusion_matrix"].tolist())
+                                        val_metrics["confusion_matrix"].tolist(),
+                                        train_loss,
+                                        train_accuracy)
 
 
         scheduler.step()
@@ -94,6 +93,7 @@ def fine_tune(
         if verbose:
             print(f"Epoch {epoch + 1}/{num_epochs}")
             print(f"  Train Loss: {train_loss:.4f}")
+            print(f"  Train Accuracy: {train_accuracy:.4f}")
             print(f"  Val Loss: {val_metrics['loss']:.4f}")
             print(f"  Val Accuracy: {val_metrics['accuracy']:.4f}")
             print(f"  Val F1 (Weighted): {val_metrics['f1_weighted']:.4f}")
@@ -170,10 +170,12 @@ def _train_epoch(
         train_loader: DataLoader,
         optimizer: optim.Optimizer,
         loss_fn: nn.Module,
-        device: str) -> float:
+        device: str) -> tuple[float, float]:
     model.train()
     total_loss = 0.0
     num_batches = 0
+    correct = 0
+    seen = 0
 
     for images, labels in train_loader:
         images = images.to(device)
@@ -188,8 +190,12 @@ def _train_epoch(
 
         total_loss += loss.item()
         num_batches += 1
+        correct += (outputs.detach().argmax(dim=1) == labels).sum().item()
+        seen += labels.numel()
 
-    return total_loss / num_batches if num_batches > 0 else 0.0
+    mean_loss = total_loss / num_batches if num_batches > 0 else 0.0
+    accuracy = correct / seen if seen > 0 else 0.0
+    return mean_loss, accuracy
 
 
 def _validate(

@@ -109,6 +109,7 @@ class TrainingStubs:
     def __init__(self):
         self.built_models: list[str] = []
         self.loader_batch_sizes: list[int] = []
+        self.loader_kwargs: list[dict] = []
         self.fine_tune_calls: list[dict] = []
         self.memory_releases = 0
         self.fine_tune_error: Exception | None = None
@@ -117,8 +118,9 @@ class TrainingStubs:
         self.built_models.append(model_data.name)
         return SimpleNamespace(name=model_data.name)
 
-    def create_dataloaders(self, dataset_path, batch_size):
+    def create_dataloaders(self, dataset_path, batch_size, **kwargs):
         self.loader_batch_sizes.append(batch_size)
+        self.loader_kwargs.append(kwargs)
         return "train_loader", "val_loader", "test_loader"
 
     def fine_tune(self, model, strategy, learning_rate, num_epochs, weight_decay, **kwargs):
@@ -137,7 +139,9 @@ class TrainingStubs:
             precision=0.4,
             recall=0.3,
             f1_macro=0.2,
-            confusion_matrix=[[1]],
+            confusion_matrix=[[7, 1], [2, 5]],
+            train_loss=0.25,
+            train_accuracy=0.875,
         )
 
     def release_memory(self):

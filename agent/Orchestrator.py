@@ -1,4 +1,3 @@
-import warnings
 from collections.abc import Callable
 from dataclasses import dataclass
 
@@ -10,8 +9,6 @@ from agent.ExperimentMemory import ExperimentMemory
 from agent.tools import FINISH_TOOL, RUN_EXPERIMENT_TOOL, create_agent_tools
 from config import Settings
 from finetuning import ModelCatalog
-
-warnings.filterwarnings("ignore", category=UserWarning, module="torch.utils.cpp_extension")
 
 DEFAULT_MAX_EXPERIMENTS = 10
 DEFAULT_MAX_STEPS = 40
@@ -156,7 +153,7 @@ def build_system_prompt(max_experiments: int) -> str:
 
 @dataclass(frozen=True)
 class AgentRunResult:
-    stop_reason: str  
+    stop_reason: str
     steps: int
     experiments: int
 
@@ -169,6 +166,7 @@ class Orchestrator:
         max_experiments: int = DEFAULT_MAX_EXPERIMENTS,
         max_steps: int = DEFAULT_MAX_STEPS,
         approve: Callable[[dict], bool] | None = None,
+        samples_per_class: int | None = None,
     ):
 
         self.settings = settings
@@ -184,7 +182,8 @@ class Orchestrator:
         self.tools = create_agent_tools(catalog=self.model_catalog,
                                         budget=self.budget,
                                         memory=self.memory,
-                                        settings=settings)
+                                        settings=settings,
+                                        samples_per_class=samples_per_class)
         self.tools_by_name = {tool.name: tool for tool in self.tools}
         # llm init
         if llm is None:
@@ -269,7 +268,7 @@ class Orchestrator:
             return f"ERROR: Unknown tool '{name}'. Available tools: {list(self.tools_by_name)}"
         try:
             return str(tool.invoke(tool_call["args"]))
-        except Exception as error:  
+        except Exception as error:
             return f"ERROR: {name} failed with {type(error).__name__}: {error}"
 
     def _answer(self, tool_call: dict, content: str) -> None:

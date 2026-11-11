@@ -24,7 +24,7 @@ class ModelCatalog:
 
     def __str__(self):
         model_str = ""
-        for name, model in self.model_dict.items():
+        for model in self.model_dict.values():
             model_str += f"{model}\n"
         return f"Models:\n{model_str}"
 

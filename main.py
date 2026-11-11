@@ -1,11 +1,9 @@
 import argparse
-import warnings
 from pathlib import Path
 
 from agent.Orchestrator import DEFAULT_MAX_EXPERIMENTS, DEFAULT_MAX_STEPS, AgentRunResult, Orchestrator
+from agent.smoke import SMOKE_SAMPLES_PER_CLASS, smoke_llm, smoke_passed
 from config import load_settings
-
-warnings.filterwarnings("ignore", category=UserWarning, module="torch.utils.cpp_extension")
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
@@ -16,6 +14,9 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
                         help="experiment budget (default: %(default)s)")
     parser.add_argument("--max-steps", type=int, default=DEFAULT_MAX_STEPS,
                         help="maximum number of LLM replies before the session is stopped (default: %(default)s)")
+    parser.add_argument("--smoke", action="store_true",
+                        help="check the setup: a scripted stand-in for the LLM trains two models for two epochs "
+                             "on a small image sample; needs no API key")
     return parser.parse_args(argv)
 
 
@@ -41,7 +42,13 @@ if __name__ == "__main__":
         max_experiments=args.max_experiments,
         max_steps=args.max_steps,
         approve=ask_approval if args.approve else None,
+        llm=smoke_llm() if args.smoke else None,
+        samples_per_class=SMOKE_SAMPLES_PER_CLASS if args.smoke else None,
     )
     result = run_session(orch, settings.model_dir / "history.txt")
     print(f"\nSession complete: {result.stop_reason} "
           f"({result.experiments} experiments, {result.steps} steps).")
+    if args.smoke:
+        if not smoke_passed(result):
+            raise SystemExit("Smoke run FAILED: not every experiment completed. See the errors above.")
+        print("Smoke run passed.")

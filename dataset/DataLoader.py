@@ -7,7 +7,7 @@ import torchvision.transforms as transforms
 from torch.utils.data import DataLoader
 
 from .BreastCancerDataset import BreastCancerDataset
-from .splits import split_dataframe
+from .splits import sample_per_class, split_dataframe
 
 
 def create_dataloaders(
@@ -17,9 +17,12 @@ def create_dataloaders(
                        validation_size=0.1,
                        image_size=(224, 224),
                        batch_size=64,
-                       num_workers=4):
+                       num_workers=4,
+                       samples_per_class=None):
 
     df = pd.read_csv(os.path.join(dataset_path, "train_labels.csv"))
+    if samples_per_class is not None:
+        df = sample_per_class(df, samples_per_class)
     train_df, val_df, test_df = split_dataframe(
         df,
         test_size=test_size,
@@ -79,7 +82,7 @@ def show_batch(loader):
 
     plt.figure(figsize=(16, 8))
     for i in range(min(4, len(images))):
-        ax = plt.subplot(1, 4, i + 1)
+        plt.subplot(1, 4, i + 1)
         img = images[i].numpy().transpose((1, 2, 0))
         mean = np.array([0.485, 0.456, 0.406])
         std = np.array([0.229, 0.224, 0.225])

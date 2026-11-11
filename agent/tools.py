@@ -1,4 +1,3 @@
-import warnings
 from typing import Literal
 
 from langchain.tools import tool
@@ -12,8 +11,6 @@ from finetuning.FineTuner import fine_tune
 from finetuning.FineTuneStrategy import FineTuneStrategy
 from finetuning.ModelCatalog import ModelCatalog
 from utils.model_utils import get_model, release_memory
-
-warnings.filterwarnings("ignore", category=UserWarning, module="torch.utils.cpp_extension")
 
 RUN_EXPERIMENT_TOOL = "run_experiment"
 FINISH_TOOL = "finish"
@@ -57,7 +54,8 @@ def _run_experiment_schema(catalog: ModelCatalog) -> type[BaseModel]:
     return RunExperimentInput
 
 
-def create_agent_tools(catalog:ModelCatalog, budget:AgentBudget, memory:ExperimentMemory, settings:Settings):
+def create_agent_tools(catalog:ModelCatalog, budget:AgentBudget, memory:ExperimentMemory, settings:Settings,
+                       samples_per_class: int | None = None):
     @tool(args_schema=GetModelsInput, description="Returns the list of available models.")
     def get_available_models() -> str:
         return str(catalog)
@@ -84,7 +82,9 @@ def create_agent_tools(catalog:ModelCatalog, budget:AgentBudget, memory:Experime
         model = train_loader = val_loader = None
         try:
             model = get_model(catalog.get_model_data(model_name))
-            train_loader, val_loader, _ = create_dataloaders(settings.dataset_path, batch_size=batch_size)
+            train_loader, val_loader, _ = create_dataloaders(
+                settings.dataset_path, batch_size=batch_size, samples_per_class=samples_per_class
+            )
 
             result = fine_tune(
                 model=model,
@@ -112,6 +112,7 @@ def create_agent_tools(catalog:ModelCatalog, budget:AgentBudget, memory:Experime
             f"  Strategy: {strategy}\n"
             f"  Learning rate: {learning_rate}\n"
             f"  Epochs: {epochs}\n"
+            f"  Train Acc: {result.train_accuracy:.4f} | Loss: {result.train_loss:.4f}\n"
             f"  Val Acc: {result.accuracy:.4f} | Loss: {result.loss:.4f}\n"
             f"  Val Recall: {result.recall:.4f}\n"
             f"  Val Precision: {result.precision:.4f}\n"

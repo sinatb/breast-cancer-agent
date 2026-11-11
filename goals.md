@@ -39,7 +39,7 @@ checkout and PyTorch was deliberately not installed for the review. Findings are
 | C6 | **Import crashes without configuration.** `os.path.join(None, "images")` raises `TypeError` at import when `DATASET_PATH` is unset, and there is no `.env.example` or list of required variables. If `MODEL_DIR` is unset, checkpoints silently go to a folder literally named `None/`. Fixed: `config.load_settings()` resolves settings when a run starts and names any missing one; nothing reads the environment at import time. | [config.py](config.py), [preprocess.py:13](dataset/preprocess.py#L13), [FineTuner.py:320](finetuning/FineTuner.py#L320) | Fixed |
 | C7 | **One tool failure ends the session and loses everything.** Parallel tool calls raise `RuntimeError`, and a CUDA out-of-memory error or bad argument propagates uncaught. `ExperimentMemory` lives only in RAM and `history.txt` is written only at the very end. Fixed for failures: extra tool calls and tool exceptions are returned to the model as errors, and `history.txt` is written even when the run crashes. Still open: `ExperimentMemory` is in RAM only (G2 resume). | [Orchestrator.py](agent/Orchestrator.py), [main.py](main.py) | Partly fixed |
 | C8 | **The agent is not a loop.** `invoke` makes one LLM call, runs one tool, and returns. The model never sees the result in that turn, so the "Analyze, then act" flow depends on a human pressing keys, and a step that only checks the budget still costs a whole turn. `input()` also prevented unattended runs. Fixed: `Orchestrator.run` loops until `finish`, an exhausted budget or the step limit, and `main.py` is unattended unless `--approve` is given. | [Orchestrator.py](agent/Orchestrator.py), [main.py](main.py) | Fixed |
-| C9 | **Notebooks do not import as committed.** `from FineTuner import ...` and `from DataLoader import *` load modules that use relative imports, which raises `ImportError` outside a package. | [finetuning_analysis.ipynb](finetuning/finetuning_analysis.ipynb), [dataset analysis.ipynb](dataset/dataset%20analysis.ipynb) | Confirmed |
+| C9 | **Notebooks do not import as committed.** `from FineTuner import ...` and `from DataLoader import *` load modules that use relative imports, which raises `ImportError` outside a package. Fixed: both notebooks add the project root to `sys.path`, import through the packages and read paths from `load_settings()`; see the G1 checks below. | [finetuning_analysis.ipynb](finetuning/finetuning_analysis.ipynb), [dataset analysis.ipynb](dataset/dataset%20analysis.ipynb) | Fixed |
 
 ### Evaluation validity
 
@@ -51,7 +51,7 @@ checkout and PyTorch was deliberately not installed for the review. Findings are
 | E4 | Checkpoints are selected by accuracy while the loss is class-weighted. These goals conflict: accuracy rewards ignoring the rare classes that the weights try to protect. | [FineTuner.py:101](finetuning/FineTuner.py#L101) | Confirmed |
 | E5 | The budget counts experiments, so 20 epochs of full ViT costs the same as 1 epoch of a MobileNet probe. The prompt's advice to "conserve budget" with small models has no effect under this budget. | [AgentBudget.py](agent/AgentBudget.py) | Confirmed |
 | E6 | All strategies share the default learning rate and fixed epochs in the notebook, which favors whichever strategy that setting happens to suit. | [finetuning_analysis.ipynb](finetuning/finetuning_analysis.ipynb) | Confirmed |
-| E7 | Images may be from the same patient (for example two views), which would leak across splits. `train_labels.csv` has only a filename and a label. | dataset | To verify |
+| E7 | Images may be from the same patient (for example two views), which would leak across splits. `train_labels.csv` has only a filename and a label. Checked: patients cannot be confirmed or ruled out without IDs, and there are 3 near-duplicate pairs, one with conflicting labels (see the G1 checks). | dataset | Partly verified |
 | E8 | There is no baseline, either for the classifier (majority class) or for the agent (random search). Whether the LLM adds value is untested. | whole project | Confirmed |
 
 ### Other bugs and quality issues
@@ -59,17 +59,17 @@ checkout and PyTorch was deliberately not installed for the review. Findings are
 | # | Problem | Where |
 |---|---|---|
 | Q1 | The system prompt names a tool `get_experience`, but the real name is `get_experience_summary`. Fixed. | [Orchestrator.py](agent/Orchestrator.py) |
-| Q2 | The prompt tells the agent to compare train and validation accuracy, but training accuracy is never computed or returned. The confusion matrix is also missing from `get_experience_summary`. | [Orchestrator.py:81](agent/Orchestrator.py#L81), [FineTuneResult.py:19](finetuning/FineTuneResult.py#L19) |
+| Q2 | The prompt tells the agent to compare train and validation accuracy, but training accuracy is never computed or returned. The confusion matrix is also missing from `get_experience_summary`. Fixed: `_train_epoch` returns the training accuracy, `FineTuneResult` stores it, and both it and the confusion matrix reach the agent. | [Orchestrator.py:81](agent/Orchestrator.py#L81), [FineTuneResult.py:19](finetuning/FineTuneResult.py#L19) |
 | Q3 | Batch size defaults to 8 in the schema, 32 in the tool function, and 64 in the loader. Fixed for the agent: one `DEFAULT_BATCH_SIZE` (32) is used by the schema and the tool, which always passes it to the loader. | [tools.py:26](agent/tools.py#L26), [tools.py:46](agent/tools.py#L46), [DataLoader.py:20](dataset/DataLoader.py#L20) |
 | Q4 | Tool inputs are barely validated: epochs of 0 or fewer, negative learning rates and very large batch sizes are all accepted. Zero epochs returns a result of `-inf`. Fixed: the schema bounds epochs, learning rate, weight decay and batch size, and only accepts catalog models and known strategies. | [tools.py:61](agent/tools.py#L61) |
 | Q5 | The model and data are built before the budget is checked, and repeating a config overwrites its checkpoint folder despite the "never repeat" prompt rule. Fixed: the budget is checked first and run folders are unique; rejecting a repeated config is left to G5. | [tools.py:64](agent/tools.py#L64) |
-| Q6 | `_compute_class_weights` runs the full image pipeline over the training set just to count labels, once per experiment. | [FineTuner.py:143](finetuning/FineTuner.py#L143) |
+| Q6 | `_compute_class_weights` runs the full image pipeline over the training set just to count labels, once per experiment. Fixed: counted from the dataframe. | [FineTuner.py:143](finetuning/FineTuner.py#L143) |
 | Q7 | Watershed preprocessing runs on every image, every epoch, with no cache. This is likely the main CPU bottleneck. | [BreastCancerDataset.py:18](dataset/BreastCancerDataset.py#L18) |
 | Q8 | Training has no augmentation (train and test transforms are identical), which fits the overfitting in the ResNet run: train loss 0.30 against validation loss 2.57 by epoch 5. | [DataLoader.py:37](dataset/DataLoader.py#L37) |
-| Q9 | `images.requires_grad_(True)` computes gradients for input pixels for no benefit. | [FineTuner.py:177](finetuning/FineTuner.py#L177) |
-| Q10 | Each checkpoint stores the full model and optimizer, about 1 GB for ViT under `FULL_FT`. `model_dir/` and `history.txt` are also missing from `.gitignore`. | [FineTuner.py:267](finetuning/FineTuner.py#L267) |
-| Q11 | `index > len(self.df)` is off by one. The filename parsing `[6:10]` assumes exactly four digits. | [BreastCancerDataset.py:15](dataset/BreastCancerDataset.py#L15) |
-| Q12 | Crops are resized straight to a square, which distorts anatomy by a different amount in each image. White-background images may defeat the fixed threshold of 5 (to verify). | [preprocess.py:23](dataset/preprocess.py#L23), [preprocess.py:61](dataset/preprocess.py#L61) |
+| Q9 | `images.requires_grad_(True)` computes gradients for input pixels for no benefit. Fixed: removed. | [FineTuner.py:177](finetuning/FineTuner.py#L177) |
+| Q10 | Each checkpoint stores the full model and optimizer, about 1 GB for ViT under `FULL_FT`. `model_dir/` and `history.txt` are also missing from `.gitignore`. Fixed: trainable weights only, one folder per run under the git-ignored `runs/`, which also holds `history.txt`. | [FineTuner.py:267](finetuning/FineTuner.py#L267) |
+| Q11 | `index > len(self.df)` is off by one. The filename parsing `[6:10]` assumes exactly four digits. Fixed: both are gone. | [BreastCancerDataset.py:15](dataset/BreastCancerDataset.py#L15) |
+| Q12 | Crops are resized straight to a square, which distorts anatomy by a different amount in each image. White-background images may defeat the fixed threshold of 5. Verified (see the G1 checks): crops are 1.87 times taller than wide at the median, so the square resize stretches the width by about 1.9, and one image becomes entirely white. Fixes belong to G4. | [preprocess.py:23](dataset/preprocess.py#L23), [preprocess.py:61](dataset/preprocess.py#L61) |
 | Q13 | Dead or misplaced code: `TaskType`, `List`, `load_checkpoint`, `frozen_backbone`, `torchaudio`, the one-line `utils/` wrapper, plotting inside `DataLoader.py`, and `verification.py` posing as a test. | various |
 | Q14 | The LLM model, budget of 10, epoch cap of 20, LoRA settings and class count are hard-coded, and the number 10 also appears in the prompt and a print statement. | [Orchestrator.py:138](agent/Orchestrator.py#L138) |
 
@@ -83,7 +83,7 @@ checkout and PyTorch was deliberately not installed for the review. Findings are
 - [x] Add a `pyproject.toml` that declares every direct dependency with version ranges, managed with uv: a CPU torch group for local runs, a CUDA group for GPU machines, and Kaggle reusing its preinstalled torch.
 - [x] Add `.env.example` documenting `DATASET_PATH`, `MODEL_DIR`, `API_KEY`, `BASE_URL` and the LLM model name.
 - [x] Add a typed `config.py`, and remove every `load_dotenv()` and `os.getenv()` that runs at import time. Paths are resolved when a run starts, with a clear error naming any missing setting. (`load_settings()` returns a frozen `Settings` that is passed into `create_dataloaders`, `fine_tune` and the agent; `tests/test_config.py`.)
-- [ ] Replace the copied warning filters by fixing the cause (`setuptools` pin or a newer torch).
+- [x] Replace the copied warning filters by fixing the cause (`setuptools` pin or a newer torch). (The locked torch 2.14 and setuptools 84 no longer raise the `torch.utils.cpp_extension` warning, so the four filters were deleted; importing `main`, `peft`, `timm` and the data pipeline records no warning.)
 
 **Training correctness**
 - [x] Keep the head trainable under LoRA. (`_apply_lora` re-enables the head; `test_lora_head_is_trained`.)
@@ -101,6 +101,42 @@ checkout and PyTorch was deliberately not installed for the review. Findings are
 - [x] Add an unattended mode, keeping human approval as an option. (Unattended is the default; `--approve` asks before each experiment and a refusal ends the session.)
 
 **Done when:** a new user can follow the README and complete a smoke run (2 models, 2 epochs, a stub LLM, a small image sample) with no code edits. The C3, E7 and Q12 checks are recorded in this file. Notebooks run top to bottom after restarting the kernel.
+
+#### G1 checks (2026-11-11, CPU, on the real dataset)
+
+- **Smoke run.** `uv run python main.py --smoke` trained MobileNetV3 (linear probe) and ResNet-50 (LoRA) for 2
+  epochs each on 16 images per class, with a scripted stand-in for the LLM and no API key, and wrote both checkpoints
+  and `history.txt`. The first attempt is worth recording: a corrupted ResNet-50 download failed its hash check, the
+  loop reported the error to the agent and carried on, and the smoke run correctly reported failure. A retry passed.
+- **C3, LoRA targets on the real architectures** (real layouts, random weights, one forward and backward pass).
+  Every adapter receives a gradient, and the trainable count is exactly LoRA plus head:
+
+  | Model | Adapters | LoRA parameters | Head | Trainable |
+  |---|---|---|---|---|
+  | `vit_b_16` (timm DeiT-B) | 48 | 2,359,296 | 3,845 | 2,363,141 |
+  | `swin_s` (timm) | 99 | 2,374,656 | 3,845 | 2,378,501 |
+  | `resnet50` | 52 | 1,267,712 | 10,245 | 1,277,957 |
+  | `mobilenet_v3_large` | 47 | 412,672 | 6,405 | 419,077 |
+  | `densenet161` | 159 | 3,965,184 | 11,045 | 3,976,229 |
+
+  Swin's 99 include the three `downsample.reduction` layers. An adapter can look dead in a single pass, because
+  stochastic depth (drop rate up to 0.1) skips whole blocks; over four seeds every adapter was live.
+- **E7, same patient across splits.** Not decidable: there are no patient IDs, and low-resolution similarity cannot
+  tell two views of one patient from two similar patients (342 pairs correlate above 0.97, most with different
+  labels). No mirrored pair (a left and right view) correlates above 0.71. No two files are identical, but three
+  pairs differ by at most 1 grey level, so they are the same image saved twice: `train_0356`/`train_0428`
+  (labels **2 and 1**), `train_0358`/`train_0940` (4 and 4), `train_0952`/`train_0994` (5 and 5). All three pairs
+  fall in train under the current split. G3's `splits.json` should keep each pair in one split, and open question 1
+  should settle the conflicting label.
+- **Q12, preprocessing.** All 1,000 images are 512 × 512. Crops have a height-to-width ratio of 1.87 at the median
+  (1.40 to 2.51 for the middle 90%, extremes 0.54 and 3.25), so resizing to a square stretches the width by about
+  1.9 on average. Two images have a white band beside the breast: for `train_0098` watershed picks the band and
+  the image becomes entirely white, while `train_0290` happens to come out right. In nine images the largest
+  watershed region holds less than 80% of the foreground, so tissue is masked away; `train_0064` and `train_0090`
+  lose most of the breast.
+- **Notebooks.** `dataset analysis.ipynb` ran top to bottom in a fresh kernel, and its outputs are from that run.
+  `finetuning_analysis.ipynb` ran top to bottom in a fresh kernel with `QUICK_CHECK = True` (16 images per class,
+  1 epoch). Its committed outputs were cleared, because they came from the C1 and C2 bugs.
 
 ### G2. Run on Kaggle and Colab
 
