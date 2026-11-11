@@ -136,7 +136,10 @@ def _apply_lora(model: BreastCancerModel) -> None:
         bias="none",
     )
 
+    head = model.adapter.get_classifier(model.base_model)
     model.base_model = get_peft_model(model.base_model, lora_config)
+    for param in head.parameters():
+        param.requires_grad = True
     model.base_model.print_trainable_parameters()
 
 
