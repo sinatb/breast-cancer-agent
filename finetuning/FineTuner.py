@@ -129,10 +129,15 @@ def _apply_strategy(model: BreastCancerModel, strategy: FineTuneStrategy) -> Non
 
 
 def _apply_lora(model: BreastCancerModel) -> None:
+    targets = model.adapter.get_lora_target_modules(model.base_model)
+    unmatched = _unmatched_lora_targets(model.base_model, targets)
+    if unmatched:
+        raise ValueError(f"LoRA targets for {model.model_name} match no module in the model: {unmatched}")
+
     lora_config = LoraConfig(
         r=16,
         lora_alpha=32,
-        target_modules=model.adapter.get_lora_target_modules(),
+        target_modules=targets,
         lora_dropout=0.1,
         bias="none",
     )
@@ -142,6 +147,11 @@ def _apply_lora(model: BreastCancerModel) -> None:
     for param in head.parameters():
         param.requires_grad = True
     model.base_model.print_trainable_parameters()
+
+
+def _unmatched_lora_targets(model: nn.Module, targets: list[str]) -> list[str]:
+    names = [n for n, _ in model.named_modules()]
+    return [t for t in targets if not any(n == t or n.endswith("." + t) for n in names)]
 
 
 def _compute_class_weights(train_loader: DataLoader, device: str, num_classes: int = 5) -> torch.Tensor:

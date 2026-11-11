@@ -7,13 +7,13 @@ import numpy as np
 import pandas as pd
 import pytest
 import torch
+from timm.models.swin_transformer import SwinTransformer
+from timm.models.vision_transformer import VisionTransformer
 from torch import nn
 from torch.utils.data import DataLoader, TensorDataset
 from torchvision.models import mobilenet_v3_large
 from torchvision.models.densenet import DenseNet
 from torchvision.models.resnet import Bottleneck, ResNet
-from torchvision.models.swin_transformer import SwinTransformer
-from torchvision.models.vision_transformer import VisionTransformer
 
 import finetuning.BreastCancerModel as bcm
 from finetuning.BreastCancerModel import BreastCancerModel
@@ -26,14 +26,14 @@ CLASS_COUNTS = {1: 603, 2: 212, 3: 71, 4: 66, 5: 48}
 
 IMAGE_SIZE = 32
 
-# Same torchvision classes as the catalog models (so module names, and therefore LoRA target
-# matching, are identical), but tiny and randomly initialised so no weights are downloaded.
+# Same classes as the catalog models (timm for ViT and Swin, torchvision for the CNNs), so module names, and
+# therefore LoRA target matching, are identical, but tiny and randomly initialised so no weights are downloaded.
 TINY_MODELS = {
     "vit_b_16": lambda: VisionTransformer(
-        image_size=IMAGE_SIZE, patch_size=16, num_layers=1, num_heads=2, hidden_dim=32, mlp_dim=64
+        img_size=IMAGE_SIZE, patch_size=16, embed_dim=32, depth=1, num_heads=2, mlp_ratio=2.0
     ),
     "swin_s": lambda: SwinTransformer(
-        patch_size=[4, 4], embed_dim=16, depths=[1, 1], num_heads=[1, 1], window_size=[2, 2]
+        img_size=IMAGE_SIZE, patch_size=4, embed_dim=16, depths=(1, 1), num_heads=(1, 1), window_size=2
     ),
     "resnet50": lambda: ResNet(Bottleneck, [1, 1, 1, 1]),
     "densenet161": lambda: DenseNet(growth_rate=8, block_config=(1, 1), num_init_features=8),
@@ -61,7 +61,7 @@ def make_model(monkeypatch):
     """Factory: ``make_model(name)`` returns a BreastCancerModel built from a tiny variant."""
 
     def _make(name: str) -> BreastCancerModel:
-        monkeypatch.setitem(bcm.model_map, name, lambda weights=None: TINY_MODELS[name]())
+        monkeypatch.setitem(bcm.model_map, name, lambda: TINY_MODELS[name]())
         torch.manual_seed(0)
         return BreastCancerModel(get_default_catalog().get_model_data(name))
 

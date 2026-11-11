@@ -1,21 +1,25 @@
+from functools import partial
+
+import timm
 import torchvision.models as models
 from torch import nn
 
 from .ModelCatalog import ModelData
 
 model_map = {
-    "vit_b_16" : models.vit_b_16,
-    "swin_s" : models.swin_s,
-    "resnet50" : models.resnet50,
-    "mobilenet_v3_large" : models.mobilenet_v3_large,
-    "densenet161" : models.densenet161,
+    "vit_b_16": partial(timm.create_model, "deit_base_patch16_224.fb_in1k", pretrained=True),
+    "swin_s": partial(timm.create_model, "swin_small_patch4_window7_224.ms_in1k", pretrained=True),
+    "resnet50": partial(models.resnet50, weights="IMAGENET1K_V1"),
+    "mobilenet_v3_large": partial(models.mobilenet_v3_large, weights="IMAGENET1K_V1"),
+    "densenet161": partial(models.densenet161, weights="IMAGENET1K_V1"),
 }
 
 
-def create_base_model(model_data : ModelData):
-    new_model = model_map[model_data.name](weights="IMAGENET1K_V1")
+def create_base_model(model_data: ModelData):
+    new_model = model_map[model_data.name]()
     new_model = model_data.adapter.replace_head(new_model, num_classes=5)
     return new_model
+
 
 class BreastCancerModel(nn.Module):
     def __init__(self,

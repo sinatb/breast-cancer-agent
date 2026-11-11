@@ -82,6 +82,11 @@ def test_linear_probe_keeps_batchnorm_stats(name, make_model, random_loader):
 # --------------------------------------------------------------------------- LORA
 
 
+def _matches(target: str, names) -> list[str]:
+    """Names PEFT would match for a string target: exact, or a dotted suffix."""
+    return [n for n in names if n == target or n.endswith("." + target)]
+
+
 def test_lora_targets_match_modules(name, make_model):
     """C2 / C3: a target pattern that matches no module is silently ignored by PEFT."""
     model = make_model(name)
@@ -89,10 +94,38 @@ def test_lora_targets_match_modules(name, make_model):
 
     unmatched = [
         target
-        for target in model.adapter.get_lora_target_modules()
-        if not any(n == target or n.endswith("." + target) for n in module_names)
+        for target in model.adapter.get_lora_target_modules(model.base_model)
+        if not _matches(target, module_names)
     ]
     assert not unmatched, f"LoRA targets matching no module: {unmatched}"
+
+
+def test_lora_targets_skip_grouped_convs(name, make_model):
+    """C3: PEFT rejects LoRA on depthwise convs (r % groups != 0), so they must not be targeted."""
+    model = make_model(name)
+    modules = dict(model.base_model.named_modules())
+
+    grouped = [
+        n
+        for t in model.adapter.get_lora_target_modules(model.base_model)
+        for n in _matches(t, modules)
+        if isinstance(modules[n], torch.nn.Conv2d) and modules[n].groups > 1
+    ]
+    assert not grouped, f"grouped convs targeted: {grouped}"
+
+
+def test_lora_unmatched_target_raises(name, make_model):
+    """A target that matches nothing must fail loudly instead of being skipped."""
+    model = make_model(name)
+    real = model.adapter.get_lora_target_modules(model.base_model)
+
+    class _BogusAdapter(type(model.adapter)):
+        def get_lora_target_modules(self, _model):
+            return [*real, "no_such_module"]
+
+    model.adapter = _BogusAdapter()
+    with pytest.raises(ValueError, match="no_such_module"):
+        apply_strategy(model, FineTuneStrategy.LORA)
 
 
 def test_lora_trainable_params_are_lora_and_head(name, make_model):

@@ -31,13 +31,13 @@ class ModelCatalog:
 def get_default_catalog():
     default_catalog = ModelCatalog()
     default_catalog.add_model_data(name="vit_b_16",
-                                   acc=81.072,
+                                   acc=81.8,
                                    params=86.6,
                                    gflops=17.56,
                                    adapter=ModelAdapter.VitAdapter())
 
     default_catalog.add_model_data(name="swin_s",
-                                   acc=83.196,
+                                   acc=83.0,
                                    params=49.6,
                                    gflops=8.74,
                                    adapter=ModelAdapter.SwinAdapter())
