@@ -1,0 +1,75 @@
+[project]
+name = "breast-cancer-agent"
+version = "0.1.0"
+description = "LLM agent that fine-tunes vision models for breast cancer classification."
+readme = "README.md"
+requires-python = ">=3.10"
+
+# torch / torchvision are intentionally NOT listed here. They come from the `cpu` or `gpu`
+# dependency group locally, and from the preinstalled CUDA build on Kaggle.
+dependencies = [
+    "numpy>=1.26",
+    "pandas>=2.1",
+    "opencv-python-headless>=4.8",
+    "pillow>=10.0",
+    "scipy>=1.11",
+    "scikit-learn>=1.3",
+    "scikit-image>=0.22",
+    "matplotlib>=3.8",
+    "peft>=0.10",
+    "langchain>=0.3",
+    "langchain-core>=0.3",
+    "langchain-openai>=0.2",
+    "pydantic>=2.0",
+    "python-dotenv>=1.0",
+]
+
+[dependency-groups]
+cpu = ["torch>=2.4", "torchvision>=0.19"]
+gpu = ["torch>=2.4", "torchvision>=0.19"]
+dev = [
+    "ipykernel>=6.29",
+    "pytest>=8.0",
+    "ruff>=0.6",
+]
+
+[tool.uv]
+# Not an installable package yet (flat layout); see G6 in goals.md.
+package = false
+default-groups = ["cpu", "dev"]
+conflicts = [[{ group = "cpu" }, { group = "gpu" }]]
+
+[tool.uv.sources]
+torch = [
+    { index = "pytorch-cpu", group = "cpu" },
+    { index = "pytorch-cu126", group = "gpu" },
+]
+torchvision = [
+    { index = "pytorch-cpu", group = "cpu" },
+    { index = "pytorch-cu126", group = "gpu" },
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+addopts = "-ra --strict-markers"
+markers = ["slow: needs real model weights or takes more than a few seconds"]
+
+[tool.ruff]
+line-length = 120
+target-version = "py310"
+extend-exclude = ["*.ipynb"]
+
+[tool.ruff.lint]
+# E/W: pycodestyle, F: pyflakes, I: import sorting, B: bugbear, UP: pyupgrade
+select = ["E", "W", "F", "I", "B", "UP"]
+
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
+
+[[tool.uv.index]]
+name = "pytorch-cu126"
+url = "https://download.pytorch.org/whl/cu126"
+explicit = true

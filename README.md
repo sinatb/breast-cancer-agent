@@ -4,6 +4,29 @@ agent has been implemented which fine-tunes different models form a model catalo
 report has been written in a hierarchical fashion. Meaning this file is just a starting point, In depth analysis of each
 part is done in the respective notebook.
 
+## Setup
+Dependencies are managed with [uv](https://docs.astral.sh/uv/) through `pyproject.toml` and `uv.lock`.
+
+**Local (CPU).** `uv sync` creates `.venv` with the CPU build of PyTorch, plus `ipykernel` for the notebooks.
+```bash
+uv sync
+uv run python verification.py   # expect "CUDA available: False"
+uv run python main.py
+```
+
+**Kaggle (GPU).** Kaggle already ships a CUDA build of PyTorch, so only the other dependencies are installed, into
+the system Python:
+```bash
+!pip install -q uv
+!uv pip install --system -r pyproject.toml
+!python verification.py          # expect "CUDA available: True"
+```
+
+**Other GPU machines (CUDA 12.6).** Install with the `gpu` group instead of the default `cpu` group:
+```bash
+uv sync --no-default-groups --group gpu --group dev
+```
+
 ## Overall Architecture
 This project consists of 3 packages. `dataset`, `agent` and `finetuning`. The `utils` package contains some simple
 utilities for getting a model.
