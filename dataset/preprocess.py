@@ -1,22 +1,13 @@
-import os
-
 import cv2
 import numpy as np
-from dotenv import load_dotenv
 from scipy import ndimage as ndi
 from skimage import measure
 from skimage.feature import peak_local_max
 from skimage.segmentation import watershed
 
-## Loading the dataset path
-load_dotenv()
-DATASET_PATH = os.getenv("DATASET_PATH")
-IMAGES_PATH = os.path.join(DATASET_PATH, "images")
 
-
-def preprocess(image_number, target_size=(224, 224), padding=5):
-    img_path = os.path.join(IMAGES_PATH, f"train_{image_number}.png")
-    img = cv2.imread(img_path, cv2.IMREAD_GRAYSCALE)
+def preprocess(img_path, target_size=(224, 224), padding=5):
+    img = cv2.imread(str(img_path), cv2.IMREAD_GRAYSCALE)
 
     if img is None:
         raise ValueError(f"No image in path: {img_path}")

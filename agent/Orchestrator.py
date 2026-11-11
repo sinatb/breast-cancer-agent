@@ -1,13 +1,12 @@
-import os
 import warnings
 
-from dotenv import load_dotenv
 from langchain_core.messages import BaseMessage, HumanMessage, SystemMessage, ToolMessage
 from langchain_openai import ChatOpenAI
 
 from agent import AgentBudget
 from agent.ExperimentMemory import ExperimentMemory
 from agent.tools import create_agent_tools
+from config import Settings
 from finetuning import ModelCatalog
 
 warnings.filterwarnings("ignore", category=UserWarning, module="torch.utils.cpp_extension")
@@ -129,28 +128,25 @@ After each experiment completes, I will prompt you to continue. You should then 
 """
 
 class Orchestrator:
-    def __init__(self):
-        # env loading
-        load_dotenv()
-        self.base_url = os.getenv("BASE_URL")
-        self.api_key = os.getenv("API_KEY")
-        if self.api_key is None:
-            raise ValueError("API_KEY not found in environment variables")
+    def __init__(self, settings: Settings):
+        settings.require_llm()
+        self.settings = settings
 
         # basic var init
-        self.model = "gpt-4.1-mini"
+        self.model = settings.llm_model
         self.model_catalog = ModelCatalog.get_default_catalog()
         self.budget = AgentBudget.AgentBudget()
         self.memory = ExperimentMemory()
         # tool creation
         self.tools = create_agent_tools(catalog=self.model_catalog,
                                         budget=self.budget,
-                                        memory=self.memory)
+                                        memory=self.memory,
+                                        settings=settings)
         # llm init
         self.llm = ChatOpenAI(
             model=self.model,
-            api_key=self.api_key,
-            base_url=self.base_url,
+            api_key=settings.api_key,
+            base_url=settings.base_url,
             temperature=0,
         ).bind_tools(self.tools)
 

@@ -2,10 +2,11 @@ import codecs
 import warnings
 
 from agent.Orchestrator import Orchestrator
+from config import load_settings
 
 warnings.filterwarnings("ignore", category=UserWarning, module="torch.utils.cpp_extension")
 if __name__ == "__main__":
-    orch = Orchestrator()
+    orch = Orchestrator(load_settings())
 
     print(orch.invoke("List available models."))
     input("Press Enter...")

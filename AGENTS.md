@@ -20,14 +20,16 @@ uv run python main.py        # run the agent (needs .env, see below)
 
 ## Configuration
 
-These are read from `.env`, which is never committed:
+Copy `.env.example` to `.env`, which is never committed. `config.load_settings()` reads it when a run starts.
+Environment variables override `.env`, and relative paths resolve against the project root.
 
 | Variable | Purpose |
 |---|---|
-| `DATASET_PATH` | Folder with `images/` and `train_labels.csv` |
-| `MODEL_DIR` | Where checkpoints are written |
-| `BASE_URL` | OpenAI-compatible LLM endpoint |
-| `API_KEY` | Key for that endpoint |
+| `DATASET_PATH` | Folder with `images/` and `train_labels.csv` (required) |
+| `MODEL_DIR` | Where checkpoints are written (required) |
+| `API_KEY` | Key for the LLM endpoint (required by the agent only) |
+| `BASE_URL` | OpenAI-compatible LLM endpoint (optional, OpenAI default) |
+| `LLM_MODEL` | LLM model name (optional, default `gpt-4.1-mini`) |
 
 ## Layout
 

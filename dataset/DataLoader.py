@@ -4,16 +4,14 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import torchvision.transforms as transforms
-from dotenv import load_dotenv
 from torch.utils.data import DataLoader
 
 from .BreastCancerDataset import BreastCancerDataset
 from .splits import split_dataframe
 
-load_dotenv()
-DATASET_PATH = os.getenv("DATASET_PATH")
 
 def create_dataloaders(
+                       dataset_path,
                        random_state = 1381,
                        test_size=0.1,
                        validation_size=0.1,
@@ -21,13 +19,14 @@ def create_dataloaders(
                        batch_size=64,
                        num_workers=4):
 
-    df = pd.read_csv(os.path.join(DATASET_PATH, "train_labels.csv"))
+    df = pd.read_csv(os.path.join(dataset_path, "train_labels.csv"))
     train_df, val_df, test_df = split_dataframe(
         df,
         test_size=test_size,
         validation_size=validation_size,
         random_state=random_state,
     )
+    images_dir = os.path.join(dataset_path, "images")
     print(f"Created Dataframes {train_df.shape}, {val_df.shape}, {test_df.shape}")
 
     train_transforms = transforms.Compose([
@@ -43,16 +42,19 @@ def create_dataloaders(
 
     train_dataset = BreastCancerDataset(
         train_df,
+        images_dir=images_dir,
         image_size=image_size,
         transform=train_transforms,
     )
     val_dataset = BreastCancerDataset(
         val_df,
+        images_dir=images_dir,
         image_size=image_size,
         transform=test_transforms,
     )
     test_dataset = BreastCancerDataset(
         dataframe=test_df,
+        images_dir=images_dir,
         image_size=image_size,
         transform=test_transforms,
     )

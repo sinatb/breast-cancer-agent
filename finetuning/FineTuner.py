@@ -8,7 +8,6 @@ import numpy as np
 import torch
 import torch.nn as nn
 import torch.optim as optim
-from dotenv import load_dotenv
 from peft import LoraConfig, get_peft_model
 from sklearn.metrics import (
     confusion_matrix,
@@ -24,14 +23,13 @@ from .FineTuneResult import FineTuneResult
 from .FineTuneStrategy import FineTuneStrategy
 
 warnings.filterwarnings("ignore", category=UserWarning, module="torch.utils.cpp_extension")
-load_dotenv()
-MODEL_DIR = os.getenv("MODEL_DIR")
 
 def fine_tune(
         model: BreastCancerModel,
         strategy: FineTuneStrategy,
         train_loader: DataLoader,
         val_loader: DataLoader,
+        model_dir: str | os.PathLike,
         num_epochs: int = 10,
         learning_rate: float = 1e-4,
         weight_decay: float = 1e-4,
@@ -41,7 +39,7 @@ def fine_tune(
 
     model = model.to(device)
     _apply_strategy(model, strategy)
-    checkpoint_dir = _generate_model_dir(model, strategy, learning_rate, weight_decay, num_epochs)
+    checkpoint_dir = _generate_model_dir(model, strategy, learning_rate, weight_decay, num_epochs, model_dir)
     os.makedirs(checkpoint_dir, exist_ok=True)
 
     model.train()
@@ -331,5 +329,5 @@ def _generate_model_dir(model : BreastCancerModel,
                         learning_rate : float,
                         weight_decay : float,
                         epochs : int,
-                        base_dir : str = MODEL_DIR) -> str:
+                        base_dir : str | os.PathLike) -> str:
     return f"{base_dir}/{model.model_name}-{strategy.name}--LR-'{learning_rate}'--WD-'{weight_decay}'--epochs-'{epochs}'"

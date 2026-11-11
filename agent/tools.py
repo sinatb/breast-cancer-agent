@@ -5,6 +5,7 @@ from pydantic import BaseModel, Field
 
 from agent.AgentBudget import AgentBudget
 from agent.ExperimentMemory import ExperimentMemory
+from config import Settings
 from dataset.DataLoader import create_dataloaders
 from finetuning.FineTuner import fine_tune
 from finetuning.FineTuneStrategy import FineTuneStrategy
@@ -32,7 +33,7 @@ class GetExperienceInput(BaseModel):
     pass
 
 
-def create_agent_tools(catalog:ModelCatalog, budget:AgentBudget, memory:ExperimentMemory):
+def create_agent_tools(catalog:ModelCatalog, budget:AgentBudget, memory:ExperimentMemory, settings:Settings):
     @tool(args_schema=GetModelsInput, description="Returns the list of available models.")
     def get_available_models() -> str:
         return str(catalog)
@@ -66,7 +67,7 @@ def create_agent_tools(catalog:ModelCatalog, budget:AgentBudget, memory:Experime
 
         model_data = catalog.get_model_data(model_name)
         model = get_model(model_data)
-        train_loader, val_loader, test_loader = create_dataloaders(batch_size=batch_size)
+        train_loader, val_loader, test_loader = create_dataloaders(settings.dataset_path, batch_size=batch_size)
 
         if not budget.can_conduct_experiment():
             return "ERROR: Insufficient budget."
@@ -78,6 +79,7 @@ def create_agent_tools(catalog:ModelCatalog, budget:AgentBudget, memory:Experime
             num_epochs=epochs,
             train_loader=train_loader,
             val_loader=val_loader,
+            model_dir=settings.model_dir,
             weight_decay=weight_decay
         )
 
