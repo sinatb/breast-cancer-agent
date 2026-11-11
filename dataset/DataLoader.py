@@ -6,7 +6,7 @@ import matplotlib.pyplot as plt
 
 from torch.utils.data import DataLoader
 from .BreastCancerDataset import BreastCancerDataset
-from sklearn.model_selection import train_test_split
+from .splits import split_dataframe
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -21,15 +21,10 @@ def create_dataloaders(
                        num_workers=4):
 
     df = pd.read_csv(os.path.join(DATASET_PATH, "train_labels.csv"))
-    train_df, test_df = train_test_split(
+    train_df, val_df, test_df = split_dataframe(
         df,
         test_size=test_size,
-        random_state=random_state,
-    )
-    val_size = validation_size / (1 - test_size)
-    train_df, val_df = train_test_split(
-        train_df,
-        test_size=val_size,
+        validation_size=validation_size,
         random_state=random_state,
     )
     print(f"Created Dataframes {train_df.shape}, {val_df.shape}, {test_df.shape}")
