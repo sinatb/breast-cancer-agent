@@ -1,8 +1,11 @@
 import copy
 import json
 import os
+import uuid
 import warnings
+from collections.abc import Sequence
 from datetime import datetime
+from pathlib import Path
 
 import numpy as np
 import torch
@@ -23,6 +26,8 @@ from .FineTuneResult import FineTuneResult
 from .FineTuneStrategy import FineTuneStrategy
 
 warnings.filterwarnings("ignore", category=UserWarning, module="torch.utils.cpp_extension")
+
+LORA_SETTINGS = {"r": 16, "lora_alpha": 32, "lora_dropout": 0.1, "bias": "none"}
 
 def fine_tune(
         model: BreastCancerModel,
@@ -46,7 +51,7 @@ def fine_tune(
 
     optimizer, scheduler = _setup_optimizer_and_scheduler(model, learning_rate, weight_decay, num_epochs)
 
-    class_weights = _compute_class_weights(train_loader, device)
+    class_weights = _compute_class_weights(train_loader.dataset.labels, device=device)
     if verbose:
         print(f"class_weights: {class_weights}\n")
 
@@ -99,9 +104,7 @@ def fine_tune(
 
         if current_result.accuracy > best_result.accuracy:
             best_result = copy.deepcopy(current_result)
-            _save_checkpoint(
-                model, optimizer, epoch, best_result.to_dict(), checkpoint_dir, is_best=True
-            )
+            _save_checkpoint(model, strategy, epoch, best_result.to_dict(), checkpoint_dir)
 
     if verbose:
         print("\n" + "=" * 80)
@@ -132,13 +135,7 @@ def _apply_lora(model: BreastCancerModel) -> None:
     if unmatched:
         raise ValueError(f"LoRA targets for {model.model_name} match no module in the model: {unmatched}")
 
-    lora_config = LoraConfig(
-        r=16,
-        lora_alpha=32,
-        target_modules=targets,
-        lora_dropout=0.1,
-        bias="none",
-    )
+    lora_config = LoraConfig(target_modules=targets, **LORA_SETTINGS)
 
     head = model.adapter.get_classifier(model.base_model)
     model.base_model = get_peft_model(model.base_model, lora_config)
@@ -152,13 +149,10 @@ def _unmatched_lora_targets(model: nn.Module, targets: list[str]) -> list[str]:
     return [t for t in targets if not any(n == t or n.endswith("." + t) for n in names)]
 
 
-def _compute_class_weights(train_loader: DataLoader, device: str, num_classes: int = 5) -> torch.Tensor:
+def _compute_class_weights(labels: Sequence[int], num_classes: int = 5, device: str = "cpu") -> torch.Tensor:
     class_counts = {}
-
-    for images, labels in train_loader:
-        for label in labels:
-            label_idx = label.item() - 1
-            class_counts[label_idx] = class_counts.get(label_idx, 0) + 1
+    for label in labels:
+        class_counts[int(label)] = class_counts.get(int(label), 0) + 1
 
     total_samples = sum(class_counts.values())
 
@@ -183,10 +177,7 @@ def _train_epoch(
 
     for images, labels in train_loader:
         images = images.to(device)
-        labels = labels.to(device).long() - 1
-
-        # Ensure inputs require gradients if needed
-        images.requires_grad_(True)
+        labels = labels.to(device).long()
 
         outputs = model(images)
         loss = loss_fn(outputs, labels)
@@ -215,7 +206,7 @@ def _validate(
     with torch.no_grad():
         for images, labels in val_loader:
             images = images.to(device)
-            labels = labels.to(device).long() - 1
+            labels = labels.to(device).long()
 
             outputs = model(images)
             loss = loss_fn(outputs, labels)
@@ -270,29 +261,29 @@ def _setup_optimizer_and_scheduler(
 
 def _save_checkpoint(
         model: BreastCancerModel,
-        optimizer: optim.Optimizer,
+        strategy: FineTuneStrategy,
         epoch: int,
         metrics: dict,
-        checkpoint_dir: str,
-        is_best: bool = False) -> str:
+        checkpoint_dir: str | os.PathLike) -> str:
+    trainable = {n for n, p in model.named_parameters() if p.requires_grad}
+    buffers = {n for n, _ in model.named_buffers()}
+    state_dict = {k: v for k, v in model.state_dict().items() if k in trainable | buffers}
 
     checkpoint = {
+        "model_name": model.model_name,
+        "strategy": strategy.name,
+        "lora_settings": LORA_SETTINGS if strategy == FineTuneStrategy.LORA else None,
         "epoch": epoch,
-        "model_state_dict": model.state_dict(),
-        "optimizer_state_dict": optimizer.state_dict(),
         "metrics": metrics,
         "timestamp": datetime.now().isoformat(),
+        "state_dict": state_dict,
     }
 
-    filename = "best_model.pt" if is_best else f"checkpoint_epoch_{epoch}.pt"
-    filepath = os.path.join(checkpoint_dir, filename)
+    filepath = os.path.join(checkpoint_dir, "best_model.pt")
     torch.save(checkpoint, filepath)
-    if is_best:
-        metrics_path = os.path.join(checkpoint_dir, "best_model_metrics.json")
-        # Create a JSON-serializable copy of metrics
-        json_metrics = _make_json_serializable(metrics)
-        with open(metrics_path, 'w') as f:
-            json.dump(json_metrics, f, indent=2)
+    metrics_path = os.path.join(checkpoint_dir, "best_model_metrics.json")
+    with open(metrics_path, "w") as f:
+        json.dump(_make_json_serializable(metrics), f, indent=2)
 
     return filepath
 
@@ -312,11 +303,24 @@ def _make_json_serializable(obj):
         return obj
 
 
-def load_checkpoint(checkpoint_path: str,
+def load_checkpoint(checkpoint_path: str | os.PathLike,
                     model: BreastCancerModel,
                     device: str = "cuda" if torch.cuda.is_available() else "cpu") -> dict:
-    checkpoint = torch.load(checkpoint_path, map_location=device)
-    model.load_state_dict(checkpoint["model_state_dict"])
+    checkpoint = torch.load(checkpoint_path, map_location=device, weights_only=True)
+    if checkpoint["model_name"] != model.model_name:
+        raise ValueError(f"checkpoint is for {checkpoint['model_name']}, not {model.model_name}")
+
+    _apply_strategy(model, FineTuneStrategy[checkpoint["strategy"]])
+    state_dict = checkpoint["state_dict"]
+    trainable = {n for n, p in model.named_parameters() if p.requires_grad}
+    missing = sorted(trainable - set(state_dict))
+    if missing:
+        raise ValueError(f"checkpoint lacks trainable weights: {missing}")
+
+    unexpected = model.load_state_dict(state_dict, strict=False).unexpected_keys
+    if unexpected:
+        raise ValueError(f"checkpoint has weights the model does not: {unexpected}")
+    model.to(device)
 
     return {
         "epoch": checkpoint["epoch"],
@@ -324,10 +328,13 @@ def load_checkpoint(checkpoint_path: str,
         "timestamp": checkpoint["timestamp"],
     }
 
-def _generate_model_dir(model : BreastCancerModel,
-                        strategy : FineTuneStrategy,
-                        learning_rate : float,
-                        weight_decay : float,
-                        epochs : int,
-                        base_dir : str | os.PathLike) -> str:
-    return f"{base_dir}/{model.model_name}-{strategy.name}--LR-'{learning_rate}'--WD-'{weight_decay}'--epochs-'{epochs}'"
+
+def _generate_model_dir(model: BreastCancerModel,
+                        strategy: FineTuneStrategy,
+                        learning_rate: float,
+                        weight_decay: float,
+                        epochs: int,
+                        base_dir: str | os.PathLike) -> str:
+    run_id = f"{datetime.now():%Y%m%d-%H%M%S}-{uuid.uuid4().hex[:6]}"
+    name = f"{model.model_name}-{strategy.name}-lr{learning_rate:g}-wd{weight_decay:g}-ep{epochs}-{run_id}"
+    return str(Path(base_dir) / name)

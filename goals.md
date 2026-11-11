@@ -90,8 +90,8 @@ checkout and PyTorch was deliberately not installed for the review. Findings are
 - [x] Add one adapter-level assertion that every LoRA target pattern matches at least one module that is actually called during `forward`. (`_apply_lora` raises on unmatched targets; `test_lora_adapters_receive_updates` checks that each adapter is live.)
 - [x] Correct the ViT, Swin and MobileNet targets. For ViT attention, either accept MLP-only LoRA and document it, or move ViT and Swin to `timm`, whose attention layers are plain `Linear` modules. Done by moving ViT and Swin to timm (ImageNet-1k weights); both adapt `attn.qkv`, `attn.proj`, `mlp.fc1`, `mlp.fc2` (see C2).
 - [x] Keep frozen layers in eval mode during training, so BatchNorm statistics do not change for frozen backbones. (`BreastCancerModel.train` keeps backbone BatchNorm in eval mode under a frozen backbone; `test_linear_probe_keeps_batchnorm_stats`.)
-- [ ] Count class weights from the dataframe, remove `requires_grad_` on inputs, and centralize the conversion from 1-based labels to 0-based.
-- [ ] Save only trainable parameters and metadata, in a unique folder per run.
+- [x] Count class weights from the dataframe, remove `requires_grad_` on inputs, and centralize the conversion from 1-based labels to 0-based. (`BreastCancerDataset` is the only place labels become 0-based and exposes `labels`; `_compute_class_weights` counts them without loading images. Q11's filename slice is gone too; `tests/test_dataset.py`, `tests/test_finetuner.py`.)
+- [x] Save only trainable parameters and metadata, in a unique folder per run. (Checkpoints hold trainable parameters, buffers and metadata, without optimizer state; folders end in a timestamp and random id; `load_checkpoint` rebuilds the strategy and rejects missing trainable weights.)
 
 **Agent loop**
 - [ ] Implement a real loop: call the LLM, run the tool, feed back the result, and repeat until a `finish` tool, an exhausted budget, or a maximum step count.

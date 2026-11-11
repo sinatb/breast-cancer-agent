@@ -72,7 +72,7 @@ def make_model(monkeypatch):
 def random_loader() -> DataLoader:
     generator = torch.Generator().manual_seed(0)
     images = torch.randn(8, 3, IMAGE_SIZE, IMAGE_SIZE, generator=generator)
-    labels = torch.tensor([1, 2, 3, 4, 5, 1, 2, 3])  # 1-based, as in train_labels.csv
+    labels = torch.tensor([0, 1, 2, 3, 4, 0, 1, 2])  # 0-based, as BreastCancerDataset returns them
     return DataLoader(TensorDataset(images, labels), batch_size=4, shuffle=False)
 
 
