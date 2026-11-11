@@ -1,19 +1,34 @@
 import warnings
+from collections.abc import Callable
+from dataclasses import dataclass
 
 from langchain_core.messages import BaseMessage, HumanMessage, SystemMessage, ToolMessage
 from langchain_openai import ChatOpenAI
 
 from agent import AgentBudget
 from agent.ExperimentMemory import ExperimentMemory
-from agent.tools import create_agent_tools
+from agent.tools import FINISH_TOOL, RUN_EXPERIMENT_TOOL, create_agent_tools
 from config import Settings
 from finetuning import ModelCatalog
 
 warnings.filterwarnings("ignore", category=UserWarning, module="torch.utils.cpp_extension")
 
+DEFAULT_MAX_EXPERIMENTS = 10
+DEFAULT_MAX_STEPS = 40
+
+DEFAULT_TASK = (
+    "Start the search. Look at the available models and the budget, then run experiments one at a time, "
+    "using each result to choose the next. Call finish when you are done."
+)
+NO_TOOL_CALL_NUDGE = (
+    "You did not call a tool. Call exactly one tool to continue, or call finish with your reason if you are done."
+)
+
+# Filled with str.replace, not str.format: the prompt contains literal braces.
 SYSTEM_PROMPT = """You are an expert Machine Learning Orchestrator Agent for a breast cancer classification project.
 
-Your goal is to efficiently explore the space of pre-trained models and fine-tuning strategies to maximize validation accuracy under strict budget constraints.
+Your goal is to efficiently explore the space of pre-trained models and fine-tuning strategies to maximize
+validation accuracy under strict budget constraints.
 
 ## YOUR CAPABILITIES:
 1. Access to a catalog of pre-trained vision models (ResNet, ViT, Swin, MobileNet, DenseNet)
@@ -22,14 +37,14 @@ Your goal is to efficiently explore the space of pre-trained models and fine-tun
 4. Memory of all previous experiments to guide future decisions
 
 ## BUDGET CONSTRAINTS:
-- Maximum 10 experiments
+- Maximum {max_experiments} experiments
 - You MUST be strategic and efficient
 
 ## CRITICAL: ONE EXPERIMENT AT A TIME
 **YOU MUST RUN EXPERIMENTS SEQUENTIALLY, NOT IN PARALLEL**
 - Run ONE experiment using run_experiment
 - Wait for results and analyze them
-- Use get_experience to review what you learned
+- Use get_experience_summary to review what you learned
 - THEN decide on the next experiment
 - NEVER call run_experiment multiple times in the same response
 - NEVER try to run experiments in parallel
@@ -85,7 +100,7 @@ Your goal is to efficiently explore the space of pre-trained models and fine-tun
 
 ## LEARNING FROM EXPERIENCE:
 Before each experiment:
-1. Check past results using get_experience
+1. Check past results using get_experience_summary
 2. Identify patterns (which models/strategies work best)
 3. Avoid repeating failed configurations
 4. Build on successful experiments
@@ -122,71 +137,140 @@ For each decision, structure your response as:
 - Use data to support decisions
 - Acknowledge uncertainty when present
 
-Remember: You're managing a REAL budget. Every experiment counts. Be strategic, learn fast, and converge to the best solution efficiently.
+Remember: You're managing a REAL budget. Every experiment counts. Be strategic, learn fast, and converge to the
+best solution efficiently.
 
-After each experiment completes, I will prompt you to continue. You should then analyze results and propose the next experiment.
+## HOW THE SESSION RUNS:
+- You work in a loop: every tool call you make is executed and its result is returned to you.
+  Then you decide the next step.
+- Call exactly ONE tool per response. If you call several, only the first is executed.
+- A result starting with "ERROR" means the call failed and cost no budget. Read it, fix the cause, and continue.
+- When the budget is exhausted or more experiments would not help, call finish.
+  Give your reason and the experiment you recommend.
 """
 
+
+def build_system_prompt(max_experiments: int) -> str:
+    return SYSTEM_PROMPT.replace("{max_experiments}", str(max_experiments))
+
+
+@dataclass(frozen=True)
+class AgentRunResult:
+    stop_reason: str  
+    steps: int
+    experiments: int
+
+
 class Orchestrator:
-    def __init__(self, settings: Settings):
-        settings.require_llm()
+    def __init__(
+        self,
+        settings: Settings,
+        llm=None,
+        max_experiments: int = DEFAULT_MAX_EXPERIMENTS,
+        max_steps: int = DEFAULT_MAX_STEPS,
+        approve: Callable[[dict], bool] | None = None,
+    ):
+
         self.settings = settings
+        self.max_steps = max_steps
+        self.approve = approve
 
         # basic var init
         self.model = settings.llm_model
         self.model_catalog = ModelCatalog.get_default_catalog()
-        self.budget = AgentBudget.AgentBudget()
+        self.budget = AgentBudget.AgentBudget(max_experiments=max_experiments)
         self.memory = ExperimentMemory()
         # tool creation
         self.tools = create_agent_tools(catalog=self.model_catalog,
                                         budget=self.budget,
                                         memory=self.memory,
                                         settings=settings)
+        self.tools_by_name = {tool.name: tool for tool in self.tools}
         # llm init
-        self.llm = ChatOpenAI(
-            model=self.model,
-            api_key=settings.api_key,
-            base_url=settings.base_url,
-            temperature=0,
-        ).bind_tools(self.tools)
+        if llm is None:
+            settings.require_llm()
+            llm = ChatOpenAI(
+                model=self.model,
+                api_key=settings.api_key,
+                base_url=settings.base_url,
+                temperature=0,
+            )
+
+        self.llm = llm.bind_tools(self.tools, parallel_tool_calls=False)
 
         self.chat_history: list[BaseMessage] = [
-            SystemMessage(content=SYSTEM_PROMPT)
+            SystemMessage(content=build_system_prompt(max_experiments))
         ]
 
         print("Orchestrator initialized:")
         print(f"  Model: {self.model}")
-        print(f"  Max experiments: {10}")
+        print(f"  Max experiments: {max_experiments}")
+        print(f"  Max steps: {max_steps}")
         print(f"  Available tools: {[tool.name for tool in self.tools]}")
 
 
-    def invoke(self, user_message: str):
-        self.chat_history.append(HumanMessage(content=user_message))
+    def run(self, task: str = DEFAULT_TASK) -> AgentRunResult:
+        self.chat_history.append(HumanMessage(content=task))
 
-        response = self.llm.invoke(self.chat_history)
-        tool_calls = response.tool_calls or []
-        print(f"content : {response.content}")
-        print(f"Tool calls: {tool_calls}")
-        if len(tool_calls) > 1:
-            raise RuntimeError("More than one tool call in a single step")
+        steps = 0
+        stop_reason = "max_steps"
+        while steps < self.max_steps:
+            if not self.budget.can_conduct_experiment():
+                stop_reason = "budget_exhausted"
+                break
 
-        if tool_calls:
+            steps += 1
+            response = self.llm.invoke(self.chat_history)
             self.chat_history.append(response)
+            tool_calls = response.tool_calls or []
+            print(f"[step {steps}] content : {response.content}")
+            print(f"[step {steps}] Tool calls: {tool_calls}")
 
-            tool_call = tool_calls[0]
-            tool_call_id = tool_call["id"]
+            if not tool_calls:
+                self.chat_history.append(HumanMessage(content=NO_TOOL_CALL_NUDGE))
+                continue
 
-            tool = {t.name: t for t in self.tools}[tool_call["name"]]
-            result = tool.invoke(tool_call["args"])
-
-            self.chat_history.append(
-                ToolMessage(
-                    tool_call_id=tool_call_id,
-                    content=str(result),
-                )
+            first, extra = tool_calls[0], tool_calls[1:]
+            declined = (
+                first["name"] == RUN_EXPERIMENT_TOOL
+                and self.approve is not None
+                and not self.approve(first["args"])
             )
+            if declined:
+                result = "ERROR: The operator declined this experiment and stopped the session."
+            else:
+                result = self._execute(first)
+            print(f"[step {steps}] {first['name']} -> {result}")
+            self._answer(first, result)
 
-            return {"tool": tool_call["name"], "result": result}
+            # The API rejects a history in which any tool call is left unanswered.
+            for tool_call in extra:
+                self._answer(
+                    tool_call,
+                    "ERROR: Not executed. Only one tool call per response is allowed and only the first was run. "
+                    "Call this tool again on its own if you still need it.",
+                )
 
-        self.chat_history.append(response)
-        return {"output": response.content}
+            if declined:
+                stop_reason = "stopped_by_user"
+                break
+            if first["name"] == FINISH_TOOL and not result.startswith("ERROR"):
+                stop_reason = "finished"
+                break
+
+        experiments = self.budget.conducted_experiments
+        print(f"Agent stopped: {stop_reason} after {steps} steps, {experiments} experiments.")
+        return AgentRunResult(stop_reason=stop_reason, steps=steps, experiments=experiments)
+
+    def _execute(self, tool_call: dict) -> str:
+        name = tool_call["name"]
+        tool = self.tools_by_name.get(name)
+        if tool is None:
+            return f"ERROR: Unknown tool '{name}'. Available tools: {list(self.tools_by_name)}"
+        try:
+            return str(tool.invoke(tool_call["args"]))
+        except Exception as error:  
+            return f"ERROR: {name} failed with {type(error).__name__}: {error}"
+
+    def _answer(self, tool_call: dict, content: str) -> None:
+        self.chat_history.append(ToolMessage(tool_call_id=tool_call["id"], content=content))

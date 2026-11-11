@@ -3,6 +3,8 @@
 Nothing here touches the real dataset, the network, a GPU or the LLM.
 """
 
+from types import SimpleNamespace
+
 import numpy as np
 import pandas as pd
 import pytest
@@ -16,8 +18,10 @@ from torchvision.models.densenet import DenseNet
 from torchvision.models.resnet import Bottleneck, ResNet
 
 import finetuning.BreastCancerModel as bcm
+from config import Settings
 from finetuning.BreastCancerModel import BreastCancerModel
 from finetuning.FineTuner import _apply_strategy, _setup_optimizer_and_scheduler, _train_epoch
+from finetuning.FineTuneResult import FineTuneResult
 from finetuning.FineTuneStrategy import FineTuneStrategy
 from finetuning.ModelCatalog import get_default_catalog
 
@@ -97,3 +101,60 @@ def train_one_epoch(model: BreastCancerModel, loader: DataLoader) -> None:
     """Run one epoch through the project's real optimizer setup and training loop."""
     optimizer, _ = _setup_optimizer_and_scheduler(model, learning_rate=1e-2, weight_decay=0.0, num_epochs=1)
     _train_epoch(model, loader, optimizer, nn.CrossEntropyLoss(), "cpu")
+
+
+class TrainingStubs:
+    """Stands in for model building, data loading and training behind the agent's tools, and records every call."""
+
+    def __init__(self):
+        self.built_models: list[str] = []
+        self.loader_batch_sizes: list[int] = []
+        self.fine_tune_calls: list[dict] = []
+        self.memory_releases = 0
+        self.fine_tune_error: Exception | None = None
+
+    def get_model(self, model_data):
+        self.built_models.append(model_data.name)
+        return SimpleNamespace(name=model_data.name)
+
+    def create_dataloaders(self, dataset_path, batch_size):
+        self.loader_batch_sizes.append(batch_size)
+        return "train_loader", "val_loader", "test_loader"
+
+    def fine_tune(self, model, strategy, learning_rate, num_epochs, weight_decay, **kwargs):
+        self.fine_tune_calls.append({"model": model.name, "strategy": strategy, "epochs": num_epochs, **kwargs})
+        if self.fine_tune_error is not None:
+            raise self.fine_tune_error
+        return FineTuneResult(
+            model_name=model.name,
+            fine_tune_strategy=strategy.name,
+            model_dir="unused",
+            learning_rate=learning_rate,
+            weight_decay=weight_decay,
+            epochs=num_epochs,
+            loss=1.0,
+            accuracy=0.5,
+            precision=0.4,
+            recall=0.3,
+            f1_macro=0.2,
+            confusion_matrix=[[1]],
+        )
+
+    def release_memory(self):
+        self.memory_releases += 1
+
+
+@pytest.fixture
+def training_stubs(monkeypatch) -> TrainingStubs:
+    """Replace everything heavy in ``agent.tools``, so the tools run without a dataset, weights or training."""
+    import agent.tools as agent_tools
+
+    stubs = TrainingStubs()
+    for name in ("get_model", "create_dataloaders", "fine_tune", "release_memory"):
+        monkeypatch.setattr(agent_tools, name, getattr(stubs, name), raising=False)
+    return stubs
+
+
+@pytest.fixture
+def settings(tmp_path) -> Settings:
+    return Settings(dataset_path=tmp_path / "data", model_dir=tmp_path / "runs")

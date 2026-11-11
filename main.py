@@ -1,28 +1,47 @@
-import codecs
+import argparse
 import warnings
+from pathlib import Path
 
-from agent.Orchestrator import Orchestrator
+from agent.Orchestrator import DEFAULT_MAX_EXPERIMENTS, DEFAULT_MAX_STEPS, AgentRunResult, Orchestrator
 from config import load_settings
 
 warnings.filterwarnings("ignore", category=UserWarning, module="torch.utils.cpp_extension")
+
+
+def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Run the fine-tuning agent. Unattended unless --approve is given.")
+    parser.add_argument("--approve", action="store_true",
+                        help="ask for confirmation before each experiment; answering no ends the session")
+    parser.add_argument("--max-experiments", type=int, default=DEFAULT_MAX_EXPERIMENTS,
+                        help="experiment budget (default: %(default)s)")
+    parser.add_argument("--max-steps", type=int, default=DEFAULT_MAX_STEPS,
+                        help="maximum number of LLM replies before the session is stopped (default: %(default)s)")
+    return parser.parse_args(argv)
+
+
+def ask_approval(experiment: dict) -> bool:
+    print(f"\nThe agent wants to run: {experiment}")
+    return input("Run it? (y/n): ").strip().lower() == "y"
+
+
+def run_session(orchestrator: Orchestrator, history_path: Path) -> AgentRunResult:
+    try:
+        return orchestrator.run()
+    finally:
+        history_path.parent.mkdir(parents=True, exist_ok=True)
+        history_path.write_text(str(orchestrator.chat_history), encoding="utf-8")
+        print(f"History written to {history_path}")
+
+
 if __name__ == "__main__":
-    orch = Orchestrator(load_settings())
-
-    print(orch.invoke("List available models."))
-    input("Press Enter...")
-
-    print(orch.invoke("Check budget."))
-    input("Press Enter...")
-
-    while orch.budget.can_conduct_experiment():
-        cont = input("\nContinue? (y/n): ").strip().lower()
-        if cont != "y":
-            break
-
-        print(orch.invoke(
-            "Analyze previous results and decide the next SINGLE experiment. if needed check the budget and get a summary of previous experiments."
-        ))
-
-    with codecs.open("history.txt", "w","UTF-8") as f:
-        f.write(str(orch.chat_history))
-    print("\nSession complete.")
+    args = parse_args()
+    settings = load_settings()
+    orch = Orchestrator(
+        settings,
+        max_experiments=args.max_experiments,
+        max_steps=args.max_steps,
+        approve=ask_approval if args.approve else None,
+    )
+    result = run_session(orch, settings.model_dir / "history.txt")
+    print(f"\nSession complete: {result.stop_reason} "
+          f"({result.experiments} experiments, {result.steps} steps).")

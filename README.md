@@ -27,6 +27,19 @@ the system Python:
 uv sync --no-default-groups --group gpu --group dev
 ```
 
+## Running the agent
+`uv run python main.py` runs the agent unattended: it calls the LLM, runs the tool the LLM chose, feeds the result
+back and repeats. The session ends when the agent calls its `finish` tool, when the experiment budget is spent, or when
+the step limit is reached. A failed tool call is reported to the agent instead of ending the session.
+
+| Flag | Meaning |
+|---|---|
+| `--approve` | Ask before each experiment. Answering anything but `y` ends the session. |
+| `--max-experiments N` | Experiment budget (default 10). |
+| `--max-steps N` | Maximum number of LLM replies (default 40). |
+
+The chat history is written to `history.txt` inside `MODEL_DIR` when the session ends, including after a crash.
+
 ## Overall Architecture
 This project consists of 3 packages. `dataset`, `agent` and `finetuning`. The `utils` package contains some simple
 utilities for getting a model.
