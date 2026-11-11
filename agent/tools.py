@@ -1,13 +1,16 @@
+import warnings
+
 from langchain.tools import tool
 from pydantic import BaseModel, Field
-from finetuning.ModelCatalog import ModelCatalog
-from finetuning.FineTuneStrategy import FineTuneStrategy
-from finetuning.FineTuner import fine_tune
-from dataset.DataLoader import create_dataloaders
-from utils.model_utils import get_model
-from agent.ExperimentMemory import ExperimentMemory
+
 from agent.AgentBudget import AgentBudget
-import warnings
+from agent.ExperimentMemory import ExperimentMemory
+from dataset.DataLoader import create_dataloaders
+from finetuning.FineTuner import fine_tune
+from finetuning.FineTuneStrategy import FineTuneStrategy
+from finetuning.ModelCatalog import ModelCatalog
+from utils.model_utils import get_model
+
 warnings.filterwarnings("ignore", category=UserWarning, module="torch.utils.cpp_extension")
 
 ## TOOL INPUT DEFINITION
@@ -66,7 +69,7 @@ def create_agent_tools(catalog:ModelCatalog, budget:AgentBudget, memory:Experime
         train_loader, val_loader, test_loader = create_dataloaders(batch_size=batch_size)
 
         if not budget.can_conduct_experiment():
-            return f"ERROR: Insufficient budget."
+            return "ERROR: Insufficient budget."
 
         result = fine_tune(
             model=model,

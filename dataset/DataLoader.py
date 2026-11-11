@@ -1,13 +1,14 @@
 import os
-import pandas as pd
-import numpy as np
-import torchvision.transforms as transforms
-import matplotlib.pyplot as plt
 
+import matplotlib.pyplot as plt
+import numpy as np
+import pandas as pd
+import torchvision.transforms as transforms
+from dotenv import load_dotenv
 from torch.utils.data import DataLoader
+
 from .BreastCancerDataset import BreastCancerDataset
 from .splits import split_dataframe
-from dotenv import load_dotenv
 
 load_dotenv()
 DATASET_PATH = os.getenv("DATASET_PATH")

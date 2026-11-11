@@ -1,11 +1,12 @@
+import os
+
 import cv2
 import numpy as np
-import os
 from dotenv import load_dotenv
 from scipy import ndimage as ndi
 from skimage import measure
-from skimage.segmentation import watershed
 from skimage.feature import peak_local_max
+from skimage.segmentation import watershed
 
 ## Loading the dataset path
 load_dotenv()

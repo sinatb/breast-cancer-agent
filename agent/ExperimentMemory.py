@@ -1,4 +1,6 @@
 from finetuning.FineTuneResult import FineTuneResult
+
+
 class ExperimentMemory:
     def __init__(self):
         self.conducted_experiments = []

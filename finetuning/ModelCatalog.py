@@ -1,6 +1,7 @@
 from finetuning import ModelAdapter
 
-class ModelData(object):
+
+class ModelData:
     def __init__(self ,name:str ,params:float, gflops:float, acc:float, adapter:ModelAdapter):
         self.params = params
         self.gflops = gflops
@@ -10,9 +11,9 @@ class ModelData(object):
     def __str__(self):
         return f"Model name: {self.name}, accuracy: {self.acc}, params: {self.params}, gflops: {self.gflops}"
 
-class ModelCatalog(object):
+class ModelCatalog:
     def __init__(self):
-        super(ModelCatalog, self).__init__()
+        super().__init__()
         self.model_dict = {}
 
     def add_model_data(self, name:str, params:float, gflops:float, acc:float, adapter:ModelAdapter):

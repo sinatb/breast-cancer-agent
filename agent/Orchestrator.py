@@ -1,12 +1,15 @@
 import os
-from langchain_core.messages import SystemMessage, ToolMessage, HumanMessage, BaseMessage
-from agent import AgentBudget
+import warnings
+
 from dotenv import load_dotenv
-from finetuning import ModelCatalog
+from langchain_core.messages import BaseMessage, HumanMessage, SystemMessage, ToolMessage
+from langchain_openai import ChatOpenAI
+
+from agent import AgentBudget
 from agent.ExperimentMemory import ExperimentMemory
 from agent.tools import create_agent_tools
-from langchain_openai import ChatOpenAI
-import warnings
+from finetuning import ModelCatalog
+
 warnings.filterwarnings("ignore", category=UserWarning, module="torch.utils.cpp_extension")
 
 SYSTEM_PROMPT = """You are an expert Machine Learning Orchestrator Agent for a breast cancer classification project.
@@ -125,7 +128,7 @@ Remember: You're managing a REAL budget. Every experiment counts. Be strategic, 
 After each experiment completes, I will prompt you to continue. You should then analyze results and propose the next experiment.
 """
 
-class Orchestrator(object):
+class Orchestrator:
     def __init__(self):
         # env loading
         load_dotenv()
@@ -155,7 +158,7 @@ class Orchestrator(object):
             SystemMessage(content=SYSTEM_PROMPT)
         ]
 
-        print(f"Orchestrator initialized:")
+        print("Orchestrator initialized:")
         print(f"  Model: {self.model}")
         print(f"  Max experiments: {10}")
         print(f"  Available tools: {[tool.name for tool in self.tools]}")

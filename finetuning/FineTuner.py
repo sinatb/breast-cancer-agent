@@ -1,27 +1,28 @@
-import torch
 import copy
+import json
+import os
+import warnings
+from datetime import datetime
+
+import numpy as np
+import torch
 import torch.nn as nn
 import torch.optim as optim
-from torch.optim.lr_scheduler import CosineAnnealingLR
-from torch.utils.data import DataLoader
-from typing import Dict, Tuple, List
-from .FineTuneResult import FineTuneResult
-import os
-import json
-from datetime import datetime
-import numpy as np
+from dotenv import load_dotenv
+from peft import LoraConfig, get_peft_model
 from sklearn.metrics import (
     confusion_matrix,
     f1_score,
     precision_score,
     recall_score,
 )
+from torch.optim.lr_scheduler import CosineAnnealingLR
+from torch.utils.data import DataLoader
 
 from .BreastCancerModel import BreastCancerModel
+from .FineTuneResult import FineTuneResult
 from .FineTuneStrategy import FineTuneStrategy
-from peft import get_peft_model, LoraConfig, TaskType
-from dotenv import load_dotenv
-import warnings
+
 warnings.filterwarnings("ignore", category=UserWarning, module="torch.utils.cpp_extension")
 load_dotenv()
 MODEL_DIR = os.getenv("MODEL_DIR")
@@ -44,7 +45,7 @@ def fine_tune(
     os.makedirs(checkpoint_dir, exist_ok=True)
 
     model.train()
-    
+
     optimizer, scheduler = _setup_optimizer_and_scheduler(model, learning_rate, weight_decay, num_epochs)
 
     class_weights = _compute_class_weights(train_loader, device)
@@ -175,7 +176,7 @@ def _train_epoch(
     for images, labels in train_loader:
         images = images.to(device)
         labels = labels.to(device).long() - 1
-        
+
         # Ensure inputs require gradients if needed
         images.requires_grad_(True)
 
@@ -197,7 +198,7 @@ def _validate(
         val_loader: DataLoader,
         loss_fn: nn.Module,
         device: str,
-        num_classes: int = 5) -> Dict:
+        num_classes: int = 5) -> dict:
     model.eval()
     total_loss = 0.0
     all_predictions = []
@@ -249,7 +250,7 @@ def _setup_optimizer_and_scheduler(
         model: BreastCancerModel,
         learning_rate: float,
         weight_decay: float,
-        num_epochs: int) -> Tuple[optim.Optimizer, optim.lr_scheduler.LRScheduler]:
+        num_epochs: int) -> tuple[optim.Optimizer, optim.lr_scheduler.LRScheduler]:
 
     trainable_params = [p for p in model.parameters() if p.requires_grad]
 
@@ -263,7 +264,7 @@ def _save_checkpoint(
         model: BreastCancerModel,
         optimizer: optim.Optimizer,
         epoch: int,
-        metrics: Dict,
+        metrics: dict,
         checkpoint_dir: str,
         is_best: bool = False) -> str:
 
@@ -275,7 +276,7 @@ def _save_checkpoint(
         "timestamp": datetime.now().isoformat(),
     }
 
-    filename = f"best_model.pt" if is_best else f"checkpoint_epoch_{epoch}.pt"
+    filename = "best_model.pt" if is_best else f"checkpoint_epoch_{epoch}.pt"
     filepath = os.path.join(checkpoint_dir, filename)
     torch.save(checkpoint, filepath)
     if is_best:
@@ -305,7 +306,7 @@ def _make_json_serializable(obj):
 
 def load_checkpoint(checkpoint_path: str,
                     model: BreastCancerModel,
-                    device: str = "cuda" if torch.cuda.is_available() else "cpu") -> Dict:
+                    device: str = "cuda" if torch.cuda.is_available() else "cpu") -> dict:
     checkpoint = torch.load(checkpoint_path, map_location=device)
     model.load_state_dict(checkpoint["model_state_dict"])
 

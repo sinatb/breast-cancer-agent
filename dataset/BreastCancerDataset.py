@@ -1,6 +1,8 @@
 from PIL import Image
-from .preprocess import preprocess
 from torch.utils.data import Dataset
+
+from .preprocess import preprocess
+
 
 class BreastCancerDataset(Dataset):
     def __init__(self, dataframe, image_size=(224,224), transform=None):
