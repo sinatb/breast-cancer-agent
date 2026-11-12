@@ -350,6 +350,14 @@ def test_system_prompt_targets_macro_f1_and_asks_for_a_rationale(make_orchestrat
     assert "validation accuracy improves" not in prompt
 
 
+def test_system_prompt_warns_that_small_differences_are_noise(make_orchestrator):
+    orchestrator, _ = make_orchestrator([])
+    prompt = " ".join(orchestrator.chat_history[0].content.split())
+
+    assert "more than 0.02" not in prompt
+    assert "noise" in prompt
+
+
 def test_real_llm_needs_an_api_key(settings):
     with pytest.raises(ConfigError, match="API_KEY"):
         Orchestrator(settings)

@@ -9,17 +9,18 @@ def split_dataframe(
     validation_size: float = 0.1,
     random_state: int = 1381,
 ) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
-    """Split ``df`` into (train, val, test). ``validation_size`` is a fraction of the whole ``df``."""
     train_df, test_df = train_test_split(
         df,
         test_size=test_size,
         random_state=random_state,
+        stratify=df["label"],
     )
     val_size = validation_size / (1 - test_size)
     train_df, val_df = train_test_split(
         train_df,
         test_size=val_size,
         random_state=random_state,
+        stratify=train_df["label"],
     )
     return train_df, val_df, test_df
 

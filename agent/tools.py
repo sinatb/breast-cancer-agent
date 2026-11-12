@@ -10,7 +10,7 @@ from dataset.DataLoader import create_dataloaders
 from finetuning.FineTuner import fine_tune
 from finetuning.FineTuneStrategy import FineTuneStrategy
 from finetuning.ModelCatalog import ModelCatalog
-from utils.model_utils import get_model, release_memory
+from utils.model_utils import get_model, release_memory, seed_everything
 
 RUN_EXPERIMENT_TOOL = "run_experiment"
 FINISH_TOOL = "finish"
@@ -18,6 +18,7 @@ FINISH_TOOL = "finish"
 MAX_EPOCHS = 20
 MAX_BATCH_SIZE = 64
 DEFAULT_BATCH_SIZE = 32
+SEED = 1381
 
 
 ## TOOL INPUT DEFINITION
@@ -91,6 +92,7 @@ def create_agent_tools(catalog:ModelCatalog, budget:AgentBudget, memory:Experime
 
         model = train_loader = val_loader = None
         try:
+            seed_everything(SEED)
             model = get_model(catalog.get_model_data(model_name))
             train_loader, val_loader, _ = create_dataloaders(
                 settings.dataset_path, batch_size=batch_size, samples_per_class=samples_per_class

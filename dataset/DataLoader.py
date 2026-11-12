@@ -3,12 +3,29 @@ import os
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
+import torch
 import torchvision.transforms as transforms
 from torch.utils.data import DataLoader
 
 from .BreastCancerDataset import BreastCancerDataset
 from .preprocess import IMAGE_SIZE
 from .splits import sample_per_class, split_dataframe
+
+_NORMALIZE = transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
+
+# Mild augmentation for mammography. No horizontal flip: preprocessing already puts every breast on the same side.
+TRAIN_TRANSFORMS = transforms.Compose([
+    transforms.RandomAffine(degrees=10, translate=(0.05, 0.05), scale=(0.9, 1.1)),
+    transforms.ColorJitter(brightness=0.1, contrast=0.1),
+    transforms.Grayscale(num_output_channels=3),
+    transforms.ToTensor(),
+    _NORMALIZE,
+])
+EVAL_TRANSFORMS = transforms.Compose([
+    transforms.Grayscale(num_output_channels=3),
+    transforms.ToTensor(),
+    _NORMALIZE,
+])
 
 
 def create_dataloaders(
@@ -33,40 +50,30 @@ def create_dataloaders(
     images_dir = os.path.join(dataset_path, "images")
     print(f"Created Dataframes {train_df.shape}, {val_df.shape}, {test_df.shape}")
 
-    train_transforms = transforms.Compose([
-        transforms.Grayscale(num_output_channels=3),
-        transforms.ToTensor(),
-        transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
-    ])
-    test_transforms = transforms.Compose([
-        transforms.Grayscale(num_output_channels=3),
-        transforms.ToTensor(),
-        transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
-    ])
-
     train_dataset = BreastCancerDataset(
         train_df,
         images_dir=images_dir,
         image_size=image_size,
-        transform=train_transforms,
+        transform=TRAIN_TRANSFORMS,
     )
     val_dataset = BreastCancerDataset(
         val_df,
         images_dir=images_dir,
         image_size=image_size,
-        transform=test_transforms,
+        transform=EVAL_TRANSFORMS,
     )
     test_dataset = BreastCancerDataset(
         dataframe=test_df,
         images_dir=images_dir,
         image_size=image_size,
-        transform=test_transforms,
+        transform=EVAL_TRANSFORMS,
     )
 
     train_loader = DataLoader(train_dataset,
                               batch_size=batch_size,
                               num_workers=num_workers,
-                              shuffle=True)
+                              shuffle=True,
+                              generator=torch.Generator().manual_seed(random_state))
     val_loader = DataLoader(val_dataset,
                             batch_size=batch_size,
                             num_workers=num_workers,

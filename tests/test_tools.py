@@ -48,6 +48,19 @@ def test_tool_names(tools):
     }
 
 
+def test_run_experiment_seeds_before_building_the_model(tools, training_stubs, monkeypatch):
+    """E1: the head is initialised when the model is built, so seeding must come first."""
+    import agent.tools as agent_tools
+
+    seeded_at = []
+    monkeypatch.setattr(agent_tools, "seed_everything", lambda seed: seeded_at.append(
+        (seed, len(training_stubs.built_models))), raising=False)
+
+    tools["run_experiment"].invoke(VALID_ARGS)
+
+    assert seeded_at == [(agent_tools.SEED, 0)]
+
+
 def test_run_experiment_trains_and_records(tools, training_stubs, budget, memory):
     summary = tools["run_experiment"].invoke(VALID_ARGS)
 

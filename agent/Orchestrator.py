@@ -100,7 +100,9 @@ validation macro-F1 under strict budget constraints.
 - LORA: Middle range (1e-4, 3e-4)
 
 ### Decision Logic:
-- **If validation macro-F1 improves by more than 0.02**: Investigate this direction deeper
+- **Small differences are noise**: validation has only 100 images, and a single image of a rare class moves
+  macro-F1 by about 0.05. Treat differences below about 0.1 as ties, and prefer the cheaper configuration.
+- **If validation macro-F1 improves by about 0.1 or more**: Investigate this direction deeper
 - **If validation macro-F1 stagnates**: Try different model/strategy
 - **If validation << train accuracy**: Reduce LR or try regularization
 - **If validation ≈ train accuracy**: Might need more capacity or epochs

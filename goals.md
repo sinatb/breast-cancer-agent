@@ -45,8 +45,8 @@ checkout and PyTorch was deliberately not installed for the review. Findings are
 
 | # | Problem | Where | Status |
 |---|---|---|---|
-| E1 | No seeding of Python, NumPy, PyTorch or DataLoader workers, so run-to-run noise is unknown and differences between runs cannot be interpreted. | whole project | Confirmed |
-| E2 | Splits are not stratified. Validation has 64/21/9/4/2 samples per class where proportional would be about 60/21/7/7/5, so class 5 is judged on 2 images. | [DataLoader.py:24](dataset/DataLoader.py#L24) | Confirmed |
+| E1 | No seeding of Python, NumPy, PyTorch or DataLoader workers, so run-to-run noise is unknown and differences between runs cannot be interpreted. Partly fixed (2026-11-12): `run_experiment` calls `seed_everything(1381)` before building the model, and the train loader shuffles with a generator seeded from the split seed. Multi-seed runs remain for G3. | whole project | Partly fixed |
+| E2 | Splits are not stratified. Validation has 64/21/9/4/2 samples per class where proportional would be about 60/21/7/7/5, so class 5 is judged on 2 images. Fixed (2026-11-12): both splits are stratified by label; validation and test are now 60/21/7/7/5. Results from before this change are not comparable. | [splits.py](dataset/splits.py) | Fixed |
 | E3 | `test_loader` is created and never used. No reported number comes from held-out data. | [tools.py:66](agent/tools.py#L66) | Confirmed |
 | E4 | Checkpoints are selected by accuracy while the loss is class-weighted. These goals conflict: accuracy rewards ignoring the rare classes that the weights try to protect. | [FineTuner.py:101](finetuning/FineTuner.py#L101) | Confirmed |
 | E5 | The budget counts experiments, so 20 epochs of full ViT costs the same as 1 epoch of a MobileNet probe. The prompt's advice to "conserve budget" with small models has no effect under this budget. | [AgentBudget.py](agent/AgentBudget.py) | Confirmed |
@@ -65,7 +65,7 @@ checkout and PyTorch was deliberately not installed for the review. Findings are
 | Q5 | The model and data are built before the budget is checked, and repeating a config overwrites its checkpoint folder despite the "never repeat" prompt rule. Fixed: the budget is checked first and run folders are unique; rejecting a repeated config is left to G5. | [tools.py:64](agent/tools.py#L64) |
 | Q6 | `_compute_class_weights` runs the full image pipeline over the training set just to count labels, once per experiment. Fixed: counted from the dataframe. | [FineTuner.py:143](finetuning/FineTuner.py#L143) |
 | Q7 | Watershed preprocessing runs on every image, every epoch, with no cache. This is likely the main CPU bottleneck. | [BreastCancerDataset.py:18](dataset/BreastCancerDataset.py#L18) |
-| Q8 | Training has no augmentation (train and test transforms are identical), which fits the overfitting in the ResNet run: train loss 0.30 against validation loss 2.57 by epoch 5. | [DataLoader.py:37](dataset/DataLoader.py#L37) |
+| Q8 | Training has no augmentation (train and test transforms are identical), which fits the overfitting in the ResNet run: train loss 0.30 against validation loss 2.57 by epoch 5. Addressed (2026-11-12): mild train-only augmentation (`TRAIN_TRANSFORMS`); the effect is not yet measured. | [DataLoader.py](dataset/DataLoader.py) |
 | Q9 | `images.requires_grad_(True)` computes gradients for input pixels for no benefit. Fixed: removed. | [FineTuner.py:177](finetuning/FineTuner.py#L177) |
 | Q10 | Each checkpoint stores the full model and optimizer, about 1 GB for ViT under `FULL_FT`. `model_dir/` and `history.txt` are also missing from `.gitignore`. Fixed: trainable weights only, one folder per run under the git-ignored `runs/`, which also holds `history.txt`. | [FineTuner.py:267](finetuning/FineTuner.py#L267) |
 | Q11 | `index > len(self.df)` is off by one. The filename parsing `[6:10]` assumes exactly four digits. Fixed: both are gone. | [BreastCancerDataset.py:15](dataset/BreastCancerDataset.py#L15) |
@@ -218,10 +218,11 @@ experiment. Not yet run on Kaggle.
 - [ ] Review a gallery of preprocessing outputs and fix failures, especially white backgrounds and remaining laterality markers.
 - [ ] Preserve aspect ratio by padding, and test higher resolutions (for example 384 or 512) where the model allows.
   Started (2026-11-12): every model now trains at 448 × 448 (`IMAGE_SIZE` in `dataset/preprocess.py`). ViT and Swin get
-  `img_size=448`, and timm adapts their 224 px weights. Not yet measured. The first Kaggle run at 224 peaked at 0.33
+  `img_size=448`, and timm adapts their 224 px weights. The first 448 session (unstratified split, no seeding) peaked
+  at 0.34 (swin_s LoRA, bootstrap 95% interval 0.21–0.46), with every run overlapping it, so it shows no gain. The first Kaggle run at 224 peaked at 0.33
   validation macro-F1, and every run's bootstrap 95% interval overlapped every other's (best: 0.16–0.48), so the
   validation set cannot show a difference smaller than about 0.1. Padding is still open.
-- [ ] Add mild augmentation for mammography: small rotations, scale, brightness and contrast. Avoid horizontal flips unless justified, because preprocessing already normalizes orientation.
+- [x] Add mild augmentation for mammography (2026-11-12: `RandomAffine` ±10°, 5% shift, 0.9–1.1 scale, and ±10% brightness and contrast; not yet measured): small rotations, scale, brightness and contrast. Avoid horizontal flips unless justified, because preprocessing already normalizes orientation.
 - [ ] Compare imbalance methods: softened class weights, focal loss, balanced sampling. The current inverse-frequency weights differ by a factor of about 12.
 - [ ] Try ordinal losses if the labels are ordinal, and a binary high-risk task if that is the clinically useful question.
 - [ ] Add ensembling (from the README's further work) and test-time augmentation.

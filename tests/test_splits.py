@@ -56,7 +56,6 @@ def test_default_seed_is_1381(labels_df):
         pd.testing.assert_frame_equal(a, b)
 
 
-@pytest.mark.xfail(strict=True, reason="E2 (goals.md): split is not stratified by label")
 @pytest.mark.parametrize("split_index, split_name", [(0, "train"), (1, "val"), (2, "test")])
 def test_split_is_stratified(labels_df, split_index, split_name):
     split = split_dataframe(labels_df)[split_index]

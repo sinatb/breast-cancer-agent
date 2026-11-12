@@ -9,6 +9,7 @@ import pytest
 
 import dataset.BreastCancerDataset as bcd
 from dataset.BreastCancerDataset import BreastCancerDataset
+from dataset.splits import sample_per_class
 
 
 @pytest.fixture
@@ -53,3 +54,45 @@ def test_opens_the_file_named_in_the_csv(opened_paths, filename):
     ds = _dataset([filename], [1], images_dir="imgs")
     ds[0]
     assert opened_paths == [f"imgs/{filename}"]
+
+
+def _train_order(tmp_path, labels_df, torch_seed: int) -> list[int]:
+    import torch
+
+    from dataset.DataLoader import create_dataloaders
+
+    torch.manual_seed(torch_seed)
+    train_loader, _, _ = create_dataloaders(tmp_path, image_size=(8, 8), batch_size=4, num_workers=0)
+    return [int(label) for _, labels in train_loader for label in labels]
+
+
+def test_train_loader_order_does_not_depend_on_global_rng(tmp_path, labels_df, opened_paths):
+    """E1: the shuffle order must come from the split seed, not from whatever the global torch RNG holds."""
+    sample_per_class(labels_df, 12).to_csv(tmp_path / "train_labels.csv", index=False)
+    assert _train_order(tmp_path, labels_df, torch_seed=0) == _train_order(tmp_path, labels_df, torch_seed=1)
+
+
+def _gradient_image():
+    from PIL import Image
+
+    return Image.fromarray(np.tile(np.arange(0, 256, 4, dtype=np.uint8), (64, 1)))
+
+
+def test_eval_transform_is_deterministic():
+    from dataset.DataLoader import EVAL_TRANSFORMS
+
+    image = _gradient_image()
+    assert EVAL_TRANSFORMS(image).equal(EVAL_TRANSFORMS(image))
+
+
+def test_train_transform_augments():
+    """Q8: training had no augmentation, so train and test transforms were identical."""
+    import torch
+
+    from dataset.DataLoader import EVAL_TRANSFORMS, TRAIN_TRANSFORMS
+
+    torch.manual_seed(0)
+    image = _gradient_image()
+    first, second = TRAIN_TRANSFORMS(image), TRAIN_TRANSFORMS(image)
+    assert first.shape == EVAL_TRANSFORMS(image).shape
+    assert not first.equal(second)
