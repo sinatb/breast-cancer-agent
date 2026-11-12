@@ -5,6 +5,8 @@ No LLM endpoint, dataset or training is involved; the tools are real but everyth
 
 import re
 
+import httpx
+import openai
 import pytest
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
 
@@ -17,6 +19,7 @@ EXPERIMENT_ARGS = {
     "learning_rate": 1e-3,
     "weight_decay": 1e-4,
     "epochs": 2,
+    "rationale": "Cheap linear probe to get a first baseline.",
 }
 
 
@@ -45,8 +48,18 @@ class StubLLM:
     def invoke(self, messages):
         self.seen.append(list(messages))
         if self.replies:
-            return self.replies.pop(0)
+            next_reply = self.replies.pop(0)
+            if isinstance(next_reply, Exception):
+                raise next_reply
+            return next_reply
         return AIMessage(content="Still thinking.")
+
+
+def rejected_tool_call() -> openai.BadRequestError:
+    """The 400 the provider returned when gpt-oss leaked `<|channel|>commentary` into a tool name."""
+    message = "attempted to call tool 'run_experiment<|channel|>commentary' which was not in request.tools"
+    response = httpx.Response(400, request=httpx.Request("POST", "https://llm.test/v1/chat/completions"))
+    return openai.BadRequestError(message, response=response, body={"error": {"code": "tool_use_failed"}})
 
 
 @pytest.fixture
@@ -239,6 +252,46 @@ def test_llm_that_never_calls_a_tool_hits_the_step_limit(make_orchestrator):
     assert len(llm.seen) == 4
 
 
+def test_rejected_tool_call_is_retried(make_orchestrator):
+    orchestrator, llm = make_orchestrator([rejected_tool_call(), reply(call("finish", {"reason": "done"}))])
+
+    result = orchestrator.run()
+
+    assert result.stop_reason == "finished"
+    assert result.steps == 2
+    nudge = llm.seen[1][-1]
+    assert isinstance(nudge, HumanMessage)
+    assert "run_experiment<|channel|>commentary" in nudge.content
+    assert "run_experiment" in nudge.content and "finish" in nudge.content
+
+
+def test_repeated_llm_errors_stop_the_run(make_orchestrator):
+    orchestrator, llm = make_orchestrator([rejected_tool_call() for _ in range(10)])
+
+    result = orchestrator.run()
+
+    assert result.stop_reason == "llm_error"
+    assert result.steps == 3
+    assert len(llm.seen) == 3
+
+
+def test_llm_error_count_resets_after_a_good_reply(make_orchestrator):
+    orchestrator, _ = make_orchestrator(
+        [
+            rejected_tool_call(),
+            rejected_tool_call(),
+            reply(call("check_budget_status")),
+            rejected_tool_call(),
+            rejected_tool_call(),
+            reply(call("finish", {"reason": "done"}, "call_2")),
+        ]
+    )
+
+    result = orchestrator.run()
+
+    assert result.stop_reason == "finished"
+
+
 def test_approval_is_asked_only_for_experiments(make_orchestrator, training_stubs):
     asked = []
 
@@ -286,6 +339,15 @@ def test_system_prompt_names_real_tools_and_the_real_budget(make_orchestrator):
         assert name in llm.bound_tool_names
     assert "finish" in prompt
     assert "I will prompt you" not in prompt
+
+
+def test_system_prompt_targets_macro_f1_and_asks_for_a_rationale(make_orchestrator):
+    orchestrator, _ = make_orchestrator([])
+    prompt = " ".join(orchestrator.chat_history[0].content.split())
+
+    assert "maximize validation macro-F1" in prompt
+    assert "rationale" in prompt
+    assert "validation accuracy improves" not in prompt
 
 
 def test_real_llm_needs_an_api_key(settings):

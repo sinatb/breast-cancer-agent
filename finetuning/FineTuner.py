@@ -102,15 +102,15 @@ def fine_tune(
             print(f"  Val Recall: {val_metrics['recall']:.4f}")
             print("-" * 80)
 
-        if current_result.accuracy > best_result.accuracy:
+        if current_result.f1_macro > best_result.f1_macro:
             best_result = copy.deepcopy(current_result)
             _save_checkpoint(model, strategy, epoch, best_result.to_dict(), checkpoint_dir)
 
     if verbose:
         print("\n" + "=" * 80)
         print("Training completed!")
-        print(f"Best Val Accuracy: {best_result.accuracy:.4f}")
-        print(f"Best Val F1 (Weighted): {best_result.f1_weighted:.4f}")
+        print(f"Best Val F1 (Macro): {best_result.f1_macro:.4f}")
+        print(f"Val Accuracy at that epoch: {best_result.accuracy:.4f}")
         print("=" * 80)
         print(best_result.confusion_matrix)
 

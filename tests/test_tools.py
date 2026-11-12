@@ -18,6 +18,7 @@ VALID_ARGS = {
     "learning_rate": 1e-4,
     "weight_decay": 1e-4,
     "epochs": 2,
+    "rationale": "Baseline LoRA run on a mid-sized CNN.",
 }
 
 
@@ -73,6 +74,7 @@ def test_run_experiment_trains_and_records(tools, training_stubs, budget, memory
         {"weight_decay": -0.1},
         {"batch_size": 0},
         {"batch_size": MAX_BATCH_SIZE + 1},
+        {"rationale": ""},
     ],
     ids=lambda override: "{}={}".format(*next(iter(override.items()))),
 )
@@ -160,3 +162,23 @@ def test_sample_size_reaches_the_loaders(training_stubs, settings, budget, memor
 
 def test_finish_acknowledges_the_reason(tools):
     assert "budget spent" in tools["finish"].invoke({"reason": "budget spent"})
+
+
+def test_run_experiment_requires_a_rationale(tools, training_stubs):
+    args = {key: value for key, value in VALID_ARGS.items() if key != "rationale"}
+
+    with pytest.raises(ValidationError):
+        tools["run_experiment"].invoke(args)
+
+    assert training_stubs.fine_tune_calls == []
+
+
+def test_agent_sees_macro_f1_and_per_class_recall(tools):
+    """The stub's confusion matrix [[7, 1], [2, 5]] gives recall 7/8 and 5/7 per true class (rows)."""
+    result = tools["run_experiment"].invoke(VALID_ARGS)
+    experience = tools["get_experience_summary"].invoke({})
+
+    assert "Val macro-F1: 0.2000" in result
+    assert "Per-class recall: [0.88, 0.71]" in result
+    assert "Val F1:" not in result
+    assert "macro_f1 : 0.2000" in experience

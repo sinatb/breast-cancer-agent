@@ -1,6 +1,7 @@
 from collections.abc import Callable
 from dataclasses import dataclass
 
+import openai
 from langchain_core.messages import BaseMessage, HumanMessage, SystemMessage, ToolMessage
 from langchain_openai import ChatOpenAI
 
@@ -12,6 +13,7 @@ from finetuning import ModelCatalog
 
 DEFAULT_MAX_EXPERIMENTS = 10
 DEFAULT_MAX_STEPS = 40
+MAX_CONSECUTIVE_LLM_ERRORS = 3
 
 DEFAULT_TASK = (
     "Start the search. Look at the available models and the budget, then run experiments one at a time, "
@@ -25,7 +27,15 @@ NO_TOOL_CALL_NUDGE = (
 SYSTEM_PROMPT = """You are an expert Machine Learning Orchestrator Agent for a breast cancer classification project.
 
 Your goal is to efficiently explore the space of pre-trained models and fine-tuning strategies to maximize
-validation accuracy under strict budget constraints.
+validation macro-F1 under strict budget constraints.
+
+## OBJECTIVE: MACRO-F1, NOT ACCURACY
+- The classes are imbalanced: about 63% of validation images are class 0.
+- A model that always predicts class 0 scores about 0.63 accuracy but only about 0.16 macro-F1. That is the
+  baseline to beat. High accuracy with low macro-F1 means the model ignores the minority classes.
+- Each checkpoint is the epoch with the best validation macro-F1.
+- Read the confusion matrix (rows = true class) and the per-class recall: near-zero recall on a class means the
+  model has not learned that class.
 
 ## YOUR CAPABILITIES:
 1. Access to a catalog of pre-trained vision models (ResNet, ViT, Swin, MobileNet, DenseNet)
@@ -90,8 +100,8 @@ validation accuracy under strict budget constraints.
 - LORA: Middle range (1e-4, 3e-4)
 
 ### Decision Logic:
-- **If validation accuracy improves >2%**: Investigate this direction deeper
-- **If validation accuracy stagnates**: Try different model/strategy
+- **If validation macro-F1 improves by more than 0.02**: Investigate this direction deeper
+- **If validation macro-F1 stagnates**: Try different model/strategy
 - **If validation << train accuracy**: Reduce LR or try regularization
 - **If validation ≈ train accuracy**: Might need more capacity or epochs
 
@@ -102,23 +112,10 @@ Before each experiment:
 3. Avoid repeating failed configurations
 4. Build on successful experiments
 
-## RESPONSE FORMAT:
-For each decision, structure your response as:
-
-**Analysis**:
-- What did we learn from previous experiments?
-- What patterns emerge?
-
-**Hypothesis**:
-- What configuration should we try next and why?
-- What do we expect to happen?
-
-**Action**:
-- Call run_experiment with specific parameters (ONE AT A TIME)
-- Explain parameter choices
-
-**Budget Check**:
-- Verify remaining budget before expensive runs
+## RECORDING YOUR REASONING:
+Every run_experiment call has a `rationale` argument. Put your analysis and hypothesis there:
+- What did previous experiments show, and what patterns emerge?
+- Why this configuration, and what do you expect its macro-F1 and confusion matrix to look like?
 
 ## IMPORTANT RULES:
 1. **ALWAYS run experiments ONE AT A TIME** - wait for results before the next
@@ -212,6 +209,7 @@ class Orchestrator:
         self.chat_history.append(HumanMessage(content=task))
 
         steps = 0
+        llm_errors = 0
         stop_reason = "max_steps"
         while steps < self.max_steps:
             if not self.budget.can_conduct_experiment():
@@ -219,7 +217,23 @@ class Orchestrator:
                 break
 
             steps += 1
-            response = self.llm.invoke(self.chat_history)
+            try:
+                response = self.llm.invoke(self.chat_history)
+            except openai.BadRequestError as error:
+                # The provider can reject a reply itself, e.g. a tool name with leaked format tokens.
+                llm_errors += 1
+                print(f"[step {steps}] LLM request rejected: {error}")
+                if llm_errors >= MAX_CONSECUTIVE_LLM_ERRORS:
+                    stop_reason = "llm_error"
+                    break
+                self.chat_history.append(
+                    HumanMessage(
+                        content=f"Your last reply was rejected by the API: {error}. "
+                        f"Call exactly one tool, using its exact name from: {list(self.tools_by_name)}."
+                    )
+                )
+                continue
+            llm_errors = 0
             self.chat_history.append(response)
             tool_calls = response.tool_calls or []
             print(f"[step {steps}] content : {response.content}")

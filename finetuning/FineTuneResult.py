@@ -22,10 +22,10 @@ class FineTuneResult:
     def get_summary(self)->str:
         return (
             f"model + strat : {self.model_name} + {self.fine_tune_strategy}, learning_rate : {self.learning_rate}, "
-            f"weight_decay : {self.weight_decay}, epochs : {self.epochs}, "
+            f"weight_decay : {self.weight_decay}, epochs : {self.epochs}, macro_f1 : {self.f1_macro:.4f}, "
             f"train_accuracy : {self.train_accuracy:.4f}, train_loss : {self.train_loss:.4f}, "
-            f"accuracy : {self.accuracy:.4f}, loss : {self.loss:.4f}, precision : {self.precision}, "
-            f"recall : {self.recall}, f1 : {self.f1_macro}, confusion_matrix : {self.confusion_matrix}"
+            f"accuracy : {self.accuracy:.4f}, loss : {self.loss:.4f}, precision : {self.precision:.4f}, "
+            f"recall : {self.recall:.4f}, confusion_matrix : {self.confusion_matrix}"
         )
     def to_dict(self)->dict:
         return asdict(self)

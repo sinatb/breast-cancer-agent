@@ -50,8 +50,16 @@ def _run_experiment_schema(catalog: ModelCatalog) -> type[BaseModel]:
             le=MAX_BATCH_SIZE,
             description=f"Batch size for training (1 to {MAX_BATCH_SIZE})",
         )
+        rationale: str = Field(
+            min_length=1,
+            description="What previous results showed, why this configuration, and what you expect it to do.",
+        )
 
     return RunExperimentInput
+
+
+def _per_class_recall(confusion_matrix: list[list[int]]) -> list[float]:
+    return [row[i] / sum(row) if sum(row) else 0.0 for i, row in enumerate(confusion_matrix)]
 
 
 def create_agent_tools(catalog:ModelCatalog, budget:AgentBudget, memory:ExperimentMemory, settings:Settings,
@@ -73,8 +81,10 @@ def create_agent_tools(catalog:ModelCatalog, budget:AgentBudget, memory:Experime
             learning_rate: float,
             weight_decay: float,
             epochs: int,
+            rationale: str,
             batch_size: int = DEFAULT_BATCH_SIZE,
     ) -> str:
+        # The rationale is not used for training: it records the agent's reasoning in the tool call and history.
 
         if not budget.can_conduct_experiment():
             return "ERROR: Insufficient budget."
@@ -113,11 +123,12 @@ def create_agent_tools(catalog:ModelCatalog, budget:AgentBudget, memory:Experime
             f"  Learning rate: {learning_rate}\n"
             f"  Epochs: {epochs}\n"
             f"  Train Acc: {result.train_accuracy:.4f} | Loss: {result.train_loss:.4f}\n"
+            f"  Val macro-F1: {result.f1_macro:.4f}\n"
+            f"  Per-class recall: [{', '.join(f'{r:.2f}' for r in _per_class_recall(result.confusion_matrix))}]\n"
             f"  Val Acc: {result.accuracy:.4f} | Loss: {result.loss:.4f}\n"
-            f"  Val Recall: {result.recall:.4f}\n"
-            f"  Val Precision: {result.precision:.4f}\n"
-            f"  Val F1: {result.f1_macro:.4f}\n"
-            f"  Val cf: {result.confusion_matrix}\n"
+            f"  Val Recall (macro): {result.recall:.4f}\n"
+            f"  Val Precision (macro): {result.precision:.4f}\n"
+            f"  Val cf (rows = true class): {result.confusion_matrix}\n"
             f"Remaining budget : {budget.max_experiments - budget.conducted_experiments}\n"
         )
 

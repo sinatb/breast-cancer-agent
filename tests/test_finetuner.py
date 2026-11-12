@@ -5,12 +5,14 @@ Uses the tiny models from conftest and random tensors; nothing is downloaded and
 
 from types import SimpleNamespace
 
+import numpy as np
 import pytest
 import torch
 from conftest import IMAGE_SIZE
 from torch import nn
 from torch.utils.data import DataLoader, Dataset
 
+import finetuning.FineTuner as finetuner
 from finetuning.FineTuner import (
     _compute_class_weights,
     _generate_model_dir,
@@ -99,6 +101,30 @@ def test_train_epoch_reports_training_accuracy():
 
     assert accuracy == 0.75
     assert loss > 0
+
+
+def _val_metrics(accuracy: float, f1_macro: float) -> dict:
+    return {
+        "loss": 1.0,
+        "accuracy": accuracy,
+        "precision": 0.5,
+        "recall": 0.5,
+        "f1_micro": accuracy,
+        "f1_macro": f1_macro,
+        "f1_weighted": 0.5,
+        "confusion_matrix": np.zeros((5, 5), dtype=int),
+    }
+
+
+def test_best_epoch_is_chosen_by_macro_f1(make_model, tmp_path, monkeypatch):
+    """Epoch 1 looks like "always predict class 0": high accuracy, low macro-F1. Epoch 2 is the better model."""
+    epochs = iter([_val_metrics(accuracy=0.64, f1_macro=0.16), _val_metrics(accuracy=0.50, f1_macro=0.40)])
+    monkeypatch.setattr(finetuner, "_validate", lambda *args, **kwargs: next(epochs))
+
+    result, _, _ = _run(make_model("resnet50"), FineTuneStrategy.LINEAR_PROBE, tmp_path, epochs=2)
+
+    assert result.f1_macro == 0.40
+    assert result.accuracy == 0.50
 
 
 def test_result_carries_training_metrics(make_model, tmp_path):

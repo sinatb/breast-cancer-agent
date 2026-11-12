@@ -20,6 +20,7 @@ SMOKE_EXPERIMENTS = [
         "weight_decay": 1e-4,
         "epochs": 2,
         "batch_size": 8,
+        "rationale": "Smoke run: scripted experiment.",
     },
     {
         "model_name": "resnet50",
@@ -28,6 +29,7 @@ SMOKE_EXPERIMENTS = [
         "weight_decay": 1e-4,
         "epochs": 2,
         "batch_size": 8,
+        "rationale": "Smoke run: scripted experiment.",
     },
 ]
 
