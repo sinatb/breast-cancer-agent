@@ -49,6 +49,7 @@ Environment variables override `.env`, and relative paths resolve against the pr
 - **New modules use `snake_case.py`.** Don't rename existing modules unless the task asks for it.
 - **No secrets, data, checkpoints or run outputs in git.**
 - **Keep changes scoped to the task.** Mention unrelated problems you notice instead of fixing them.
+- **Do Not Over engineer requested features.** When asked to implement a new feature, just do that. Try to reduce the amount of new abstractions added per feature, so the complexity of the code does not increase.
 
 ## Definition of done
 
