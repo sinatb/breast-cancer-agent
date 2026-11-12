@@ -1,7 +1,6 @@
 from functools import partial
 
 import timm
-import torchvision.models as models
 from torch import nn
 
 from .ModelCatalog import ModelData
@@ -9,9 +8,9 @@ from .ModelCatalog import ModelData
 model_map = {
     "vit_b_16": partial(timm.create_model, "deit_base_patch16_224.fb_in1k", pretrained=True),
     "swin_s": partial(timm.create_model, "swin_small_patch4_window7_224.ms_in1k", pretrained=True),
-    "resnet50": partial(models.resnet50, weights="IMAGENET1K_V1"),
-    "mobilenet_v3_large": partial(models.mobilenet_v3_large, weights="IMAGENET1K_V1"),
-    "densenet161": partial(models.densenet161, weights="IMAGENET1K_V1"),
+    "resnet50": partial(timm.create_model, "resnet50.tv_in1k", pretrained=True),
+    "mobilenet_v3_large": partial(timm.create_model, "mobilenetv3_large_100.ra_in1k", pretrained=True),
+    "densenet161": partial(timm.create_model, "densenet161.tv_in1k", pretrained=True),
 }
 
 

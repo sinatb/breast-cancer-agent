@@ -119,7 +119,9 @@ checkout and PyTorch was deliberately not installed for the review. Findings are
   | `mobilenet_v3_large` | 47 | 412,672 | 6,405 | 419,077 |
   | `densenet161` | 159 | 3,965,184 | 11,045 | 3,976,229 |
 
-  Swin's 99 include the three `downsample.reduction` layers. An adapter can look dead in a single pass, because
+  Swin's 99 include the three `downsample.reduction` layers. The CNN rows were re-measured after all models moved
+  to timm (2026-11-12) and are unchanged: timm's MobileNetV3 `conv_head` is the same 960 to 1,280 layer that
+  torchvision put in its classifier. An adapter can look dead in a single pass, because
   stochastic depth (drop rate up to 0.1) skips whole blocks; over four seeds every adapter was live.
 - **E7, same patient across splits.** Not decidable: there are no patient IDs, and low-resolution similarity cannot
   tell two views of one patient from two similar patients (342 pairs correlate above 0.97, most with different
@@ -156,7 +158,8 @@ checkout and PyTorch was deliberately not installed for the review. Findings are
 - [ ] Don't pin `torch`, `torchvision` or `numpy` on hosted runtimes. Install only the missing packages, to avoid breaking their preinstalled builds.
 - [ ] Add a one-time preprocessing step that caches images to disk (fixes Q7). Size the DataLoader from `os.cpu_count()` instead of the hard-coded 4 workers, and enable mixed precision.
 - [ ] **Resume:** write each completed run and each agent step to an append-only JSONL file as it happens. Restarting skips finished work and restores the budget and agent history.
-- [ ] Handle no-internet Kaggle sessions: load pretrained weights from an attached Kaggle dataset (`TORCH_HOME` for torchvision, `HF_HOME` for the timm ViT and Swin), and give a clear error if the LLM endpoint is unreachable.
+- [x] Load every catalog model from timm, so pretrained weights come from one place (the Hugging Face Hub, cached in `HF_HOME`). ResNet-50 and DenseNet-161 use the same torchvision weights through timm (`resnet50.tv_in1k`, `densenet161.tv_in1k`). timm has no port of torchvision's MobileNetV3 weights, so it now uses `mobilenetv3_large_100.ra_in1k` (ImageNet-1k, 75.8% top-1 against 74.0%), and earlier MobileNet results are not comparable. All five use the ImageNet mean and std that the loader applies (`tests/test_model_catalog.py`).
+- [ ] Handle no-internet Kaggle sessions: load pretrained weights from an attached Kaggle dataset through `HF_HOME`, and give a clear error if the LLM endpoint is unreachable.
 - [ ] Use exactly one GPU even when Kaggle provides two, so results stay comparable.
 - [ ] Publish run profiles: `smoke`, `lite` (fits one free session), and `full`.
 - [ ] Document how to attach the dataset, after checking its license allows uploading it.

@@ -49,7 +49,7 @@ def get_default_catalog():
                                    adapter=ModelAdapter.ResNetAdapter())
 
     default_catalog.add_model_data(name="mobilenet_v3_large",
-                                   acc=74.042,
+                                   acc=75.77,
                                    params=5.5,
                                    gflops=0.22,
                                    adapter=ModelAdapter.MobileNetV3Adapter())

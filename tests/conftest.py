@@ -8,14 +8,14 @@ from types import SimpleNamespace
 import numpy as np
 import pandas as pd
 import pytest
+import timm
 import torch
+from timm.models.densenet import DenseNet
+from timm.models.resnet import Bottleneck, ResNet
 from timm.models.swin_transformer import SwinTransformer
 from timm.models.vision_transformer import VisionTransformer
 from torch import nn
 from torch.utils.data import DataLoader, TensorDataset
-from torchvision.models import mobilenet_v3_large
-from torchvision.models.densenet import DenseNet
-from torchvision.models.resnet import Bottleneck, ResNet
 
 import finetuning.BreastCancerModel as bcm
 from config import Settings
@@ -30,8 +30,8 @@ CLASS_COUNTS = {1: 603, 2: 212, 3: 71, 4: 66, 5: 48}
 
 IMAGE_SIZE = 32
 
-# Same classes as the catalog models (timm for ViT and Swin, torchvision for the CNNs), so module names, and
-# therefore LoRA target matching, are identical, but tiny and randomly initialised so no weights are downloaded.
+# Same timm classes as the catalog models, so module names, and therefore LoRA target matching, are identical, but
+# tiny and randomly initialised so no weights are downloaded.
 TINY_MODELS = {
     "vit_b_16": lambda: VisionTransformer(
         img_size=IMAGE_SIZE, patch_size=16, embed_dim=32, depth=1, num_heads=2, mlp_ratio=2.0
@@ -39,10 +39,12 @@ TINY_MODELS = {
     "swin_s": lambda: SwinTransformer(
         img_size=IMAGE_SIZE, patch_size=4, embed_dim=16, depths=(1, 1), num_heads=(1, 1), window_size=2
     ),
-    "resnet50": lambda: ResNet(Bottleneck, [1, 1, 1, 1]),
-    "densenet161": lambda: DenseNet(growth_rate=8, block_config=(1, 1), num_init_features=8),
+    # timm zero-initialises the last BN of each block by default, which blocks gradients to the block's convs at random
+    # init. Pretrained weights have no such zeros, so turn it off to match the real model.
+    "resnet50": lambda: ResNet(Bottleneck, [1, 1, 1, 1], zero_init_last=False),
+    "densenet161": lambda: DenseNet(growth_rate=8, block_config=(1, 1)),
     # Real layout on purpose: it is already small and the depthwise convs matter for LoRA.
-    "mobilenet_v3_large": lambda: mobilenet_v3_large(weights=None),
+    "mobilenet_v3_large": lambda: timm.create_model("mobilenetv3_large_100", pretrained=False),
 }
 
 MODEL_NAMES = list(TINY_MODELS)
