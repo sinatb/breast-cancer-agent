@@ -18,13 +18,11 @@ uv run python main.py --smoke   # check the setup, no API key needed
 The dataset folder needs `images/` and `train_labels.csv`. Settings are described in `.env.example`; the agent also
 needs `API_KEY`, while the smoke run and the notebooks do not.
 
-**Kaggle (GPU).** Kaggle already ships a CUDA build of PyTorch, so only the other dependencies are installed, into
-the system Python:
-```bash
-!pip install -q uv
-!uv pip install --system -r pyproject.toml
-!python verification.py          # expect "CUDA available: True"
-```
+**Kaggle (GPU).** Import [notebooks/run_kaggle.ipynb](notebooks/run_kaggle.ipynb) into Kaggle. Turn on a GPU
+accelerator and internet, attach the dataset and set `DATASET_PATH` in its second cell, and add an `API_KEY` secret
+(`BASE_URL` and `LLM_MODEL` are optional). Then use *Save & Run All*. The notebook clones this repository and installs
+only the project dependencies, so Kaggle's own torch, torchvision and numpy stay in place. It runs the agent with the
+default settings and writes checkpoints and `history.txt` to `/kaggle/working/runs`.
 
 **Other GPU machines (CUDA 12.6).** Install with the `gpu` group instead of the default `cpu` group:
 ```bash

@@ -37,7 +37,7 @@ checkout and PyTorch was deliberately not installed for the review. Findings are
 | C4 | **Linear probe is not really frozen.** `_train_epoch` calls `model.train()` on the whole model, so BatchNorm statistics in the "frozen" backbone keep changing for ResNet, DenseNet and MobileNet. Fixed: `BreastCancerModel.train()` puts backbone BatchNorm in eval mode while the backbone is frozen; FULL_FT and LoRA are unchanged. | [BreastCancerModel.py](finetuning/BreastCancerModel.py) | Fixed |
 | C5 | **Environment is incomplete.** `environment.yaml` does not declare `peft`, `langchain-openai`, `python-dotenv`, `scikit-learn`, `scikit-image` or `scipy`, all of which are imported. | [environment.yaml](environment.yaml) | Fixed (replaced by `pyproject.toml` + `uv.lock`) |
 | C6 | **Import crashes without configuration.** `os.path.join(None, "images")` raises `TypeError` at import when `DATASET_PATH` is unset, and there is no `.env.example` or list of required variables. If `MODEL_DIR` is unset, checkpoints silently go to a folder literally named `None/`. Fixed: `config.load_settings()` resolves settings when a run starts and names any missing one; nothing reads the environment at import time. | [config.py](config.py), [preprocess.py:13](dataset/preprocess.py#L13), [FineTuner.py:320](finetuning/FineTuner.py#L320) | Fixed |
-| C7 | **One tool failure ends the session and loses everything.** Parallel tool calls raise `RuntimeError`, and a CUDA out-of-memory error or bad argument propagates uncaught. `ExperimentMemory` lives only in RAM and `history.txt` is written only at the very end. Fixed for failures: extra tool calls and tool exceptions are returned to the model as errors, and `history.txt` is written even when the run crashes. Still open: `ExperimentMemory` is in RAM only (G2 resume). | [Orchestrator.py](agent/Orchestrator.py), [main.py](main.py) | Partly fixed |
+| C7 | **One tool failure ends the session and loses everything.** Parallel tool calls raise `RuntimeError`, and a CUDA out-of-memory error or bad argument propagates uncaught. `ExperimentMemory` lives only in RAM and `history.txt` is written only at the very end. Fixed for failures: extra tool calls and tool exceptions are returned to the model as errors, and `history.txt` is written even when the run crashes. Still open: `ExperimentMemory` is in RAM only (resume, now in G5). | [Orchestrator.py](agent/Orchestrator.py), [main.py](main.py) | Partly fixed |
 | C8 | **The agent is not a loop.** `invoke` makes one LLM call, runs one tool, and returns. The model never sees the result in that turn, so the "Analyze, then act" flow depends on a human pressing keys, and a step that only checks the budget still costs a whole turn. `input()` also prevented unattended runs. Fixed: `Orchestrator.run` loops until `finish`, an exhausted budget or the step limit, and `main.py` is unattended unless `--approve` is given. | [Orchestrator.py](agent/Orchestrator.py), [main.py](main.py) | Fixed |
 | C9 | **Notebooks do not import as committed.** `from FineTuner import ...` and `from DataLoader import *` load modules that use relative imports, which raises `ImportError` outside a package. Fixed: both notebooks add the project root to `sys.path`, import through the packages and read paths from `load_settings()`; see the G1 checks below. | [finetuning_analysis.ipynb](finetuning/finetuning_analysis.ipynb), [dataset analysis.ipynb](dataset/dataset%20analysis.ipynb) | Fixed |
 
@@ -140,31 +140,40 @@ checkout and PyTorch was deliberately not installed for the review. Findings are
   `finetuning_analysis.ipynb` ran top to bottom in a fresh kernel with `QUICK_CHECK = True` (16 images per class,
   1 epoch). Its committed outputs were cleared, because they came from the C1 and C2 bugs.
 
-### G2. Run on Kaggle and Colab
+### G2. Run on Kaggle
 
-*Target: the same commit runs on local, Kaggle and Colab with no code changes, and survives a killed session.*
+*Target: the agent runs once, unattended, on a Kaggle GPU with the default settings, from one notebook.*
 
-- [ ] Add `runtime.py` to detect the platform (`KAGGLE_KERNEL_RUN_TYPE`, `COLAB_RELEASE_TAG`) and supply defaults:
-
-| | Local | Kaggle | Colab |
-|---|---|---|---|
-| Data (read) | `.env` path | `/kaggle/input/<dataset>` (read-only) | Unzip from Drive to `/content` (avoids slow Drive reads) |
-| Fast cache | local folder | `/kaggle/working/cache` | `/content/cache` |
-| Durable output | local folder | `/kaggle/working/runs` (limited, about 20 GB) | `/content/drive/MyDrive/...` |
-| Secrets | `.env` | `kaggle_secrets.UserSecretsClient` | `google.colab.userdata` |
-
-- [ ] Settings resolve in this order: explicit argument, environment variable, platform default.
-- [ ] Add one `notebooks/run_cloud.ipynb` that works on both platforms: clone or attach the code, install, check the GPU, then run a chosen profile. It must work under Kaggle's "Save & Run All", so no `input()`.
-- [ ] Don't pin `torch`, `torchvision` or `numpy` on hosted runtimes. Install only the missing packages, to avoid breaking their preinstalled builds.
-- [ ] Add a one-time preprocessing step that caches images to disk (fixes Q7). Size the DataLoader from `os.cpu_count()` instead of the hard-coded 4 workers, and enable mixed precision.
-- [ ] **Resume:** write each completed run and each agent step to an append-only JSONL file as it happens. Restarting skips finished work and restores the budget and agent history.
+- [x] Add `notebooks/run_kaggle.ipynb`. It clones the repository, installs the project dependencies, checks the GPU,
+  turns Kaggle secrets into environment variables for `load_settings()`, and calls `Orchestrator.run` through
+  `main.run_session`, so `history.txt` is written even after a crash. It has no `input()`, so it works under
+  "Save & Run All". Each model is freed from the GPU after its experiment (`run_experiment` calls `release_memory()`).
+- [x] Don't pin `torch`, `torchvision` or `numpy` on Kaggle. `uv pip install --system -r pyproject.toml` installs
+  only `[project.dependencies]`. That list has no torch or torchvision, and it gives numpy only a lower bound
+  (`>=1.26`), which Kaggle's numpy already meets, so none of the three is replaced.
+- [x] Use exactly one GPU even when Kaggle provides two. Already the case: `fine_tune` uses `cuda`, which is
+  `cuda:0`, and nothing uses `DataParallel`.
 - [x] Load every catalog model from timm, so pretrained weights come from one place (the Hugging Face Hub, cached in `HF_HOME`). ResNet-50 and DenseNet-161 use the same torchvision weights through timm (`resnet50.tv_in1k`, `densenet161.tv_in1k`). timm has no port of torchvision's MobileNetV3 weights, so it now uses `mobilenetv3_large_100.ra_in1k` (ImageNet-1k, 75.8% top-1 against 74.0%), and earlier MobileNet results are not comparable. All five use the ImageNet mean and std that the loader applies (`tests/test_model_catalog.py`).
-- [ ] Handle no-internet Kaggle sessions: load pretrained weights from an attached Kaggle dataset through `HF_HOME`, and give a clear error if the LLM endpoint is unreachable.
-- [ ] Use exactly one GPU even when Kaggle provides two, so results stay comparable.
-- [ ] Publish run profiles: `smoke`, `lite` (fits one free session), and `full`.
-- [ ] Document how to attach the dataset, after checking its license allows uploading it.
+- [x] Document how to attach the dataset and the secrets (the notebook's first cell and the README). Whether the
+  dataset's license allows uploading it stays open question 2.
 
-**Done when:** the smoke profile passes on both Kaggle and Colab from one notebook, and a session deliberately killed mid-run resumes without losing or repeating a finished experiment.
+**Moved out of G2.** Kaggle sessions have internet and one run profile is enough, so these items were dropped or moved:
+- Colab support, `runtime.py` platform detection and per-platform defaults: dropped. Environment variables already
+  override `.env` in `load_settings()`.
+- Offline weights from an attached dataset: dropped, because Kaggle sessions have internet.
+- `smoke` and `lite` profiles: dropped. `main.py --smoke` covers the local setup check, and the notebook runs the
+  default (full) settings.
+- Resume from an append-only JSONL file: moved to G5, whose done-when already covers resume.
+- Image cache (Q7), `num_workers` from `os.cpu_count()` and mixed precision: moved to G4. They only affect speed.
+
+**Known risks.** There is no resume, so a run must fit in one Kaggle session (12 hours). Nobody has checked yet that
+the LLM endpoint is reachable from Kaggle (open question 4). If it is not, the first agent step fails at once.
+`opencv-python-headless` is installed next to Kaggle's own `opencv-python`, and duplicate OpenCV installs sometimes
+break `import cv2`. The notebook's environment cell imports it before anything else runs.
+
+**Done when:** `notebooks/run_kaggle.ipynb` finishes under "Save & Run All" on a Kaggle GPU with stop reason
+`finished` or `budget_exhausted`, and `/kaggle/working/runs` holds `history.txt` and one checkpoint folder per
+experiment. Not yet run on Kaggle.
 
 ### G3. Fair and meaningful evaluation
 
@@ -213,6 +222,7 @@ checkout and PyTorch was deliberately not installed for the review. Findings are
 - [ ] Try ordinal losses if the labels are ordinal, and a binary high-risk task if that is the clinically useful question.
 - [ ] Add ensembling (from the README's further work) and test-time augmentation.
 - [ ] Use Grad-CAM to confirm that the model looks at breast tissue rather than markers or borders.
+- [ ] Speed (moved from G2): cache preprocessed images to disk once (fixes Q7), size the DataLoader from `os.cpu_count()` instead of the hard-coded 4 workers, and enable mixed precision.
 
 **Done when:** the final pipeline beats the G1 baseline on locked-test macro-F1 with non-overlapping or significantly different intervals, or the report concludes that 1,000 images cannot support further gains.
 
@@ -225,6 +235,7 @@ checkout and PyTorch was deliberately not installed for the review. Findings are
 - [ ] Let the agent stop early with a stated reason, and finish with a recommendation that names its evidence.
 - [ ] Move prompts into their own module, generated from configuration so that budgets and tool names cannot drift out of date.
 - [ ] Make the LLM provider and model configurable, and record a full trace of each decision as JSONL.
+- [ ] **Resume** (moved from G2): write each completed run and each agent step to an append-only JSONL file as it happens. Restarting skips finished work and restores the budget and agent history.
 
 **Done when:** a stub-LLM test covers the full loop including tool errors, parallel calls, budget exhaustion and resume, and G3's level C shows whether these changes improved search results.
 
@@ -266,7 +277,7 @@ tests/
 | Milestone | Goals | Result |
 |---|---|---|
 | M1 | G1 | Correct, runnable project on the smoke profile |
-| M2 | G2, the G3 split and seeding work, and the core of G6 (config, tests) | Reproducible and resumable on cloud GPUs |
+| M2 | G2, the G3 split and seeding work, and the core of G6 (config, tests) | Reproducible runs on a Kaggle GPU |
 | M3 | G3 | First trustworthy baseline for strategies and models. **Earlier results should be discarded here.** |
 | M4 | G4, G5 | Better models and a better agent, each measured against M3 |
 | M5 | G6 remainder, G7 | Final report and public-ready repository |
@@ -277,5 +288,5 @@ These change the plan and can only be answered by the project owner:
 
 1. **What do labels 1–5 mean?** If they are BI-RADS-like and ordered, this affects the metric, the loss and the high-risk group definition.
 2. **Where does the dataset come from, and are patient IDs available?** This decides whether group splitting is possible (E7) and whether the data may be uploaded to Kaggle or Colab.
-3. **How much GPU time is available?** This decides the `full` profile. The full G3 design is about 180 comparison runs (15 model-strategy pairs × 4 folds × 3 seeds) plus tuning, so measure time per run after G2's caching before committing to it.
+3. **How much GPU time is available?** This decides the `full` profile. The full G3 design is about 180 comparison runs (15 model-strategy pairs × 4 folds × 3 seeds) plus tuning, so measure time per run (after G4's image caching) before committing to it.
 4. **Will the LLM provider remain Metis?** Confirm that it honors `parallel_tool_calls=False` and is reachable from Kaggle and Colab.
