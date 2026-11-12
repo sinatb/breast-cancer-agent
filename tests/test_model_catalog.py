@@ -7,9 +7,11 @@ from functools import partial
 
 import pytest
 import timm
+import torch
 from timm.data import IMAGENET_DEFAULT_MEAN, IMAGENET_DEFAULT_STD
 
 import finetuning.BreastCancerModel as bcm
+from dataset.preprocess import IMAGE_SIZE
 from finetuning.ModelCatalog import get_default_catalog
 
 CATALOG_NAMES = list(get_default_catalog().model_dict)
@@ -36,3 +38,17 @@ def test_catalog_model_uses_the_loader_normalization(name):
 
     assert tuple(cfg.mean) == IMAGENET_DEFAULT_MEAN
     assert tuple(cfg.std) == IMAGENET_DEFAULT_STD
+
+
+@pytest.mark.parametrize("name", CATALOG_NAMES)
+def test_catalog_model_accepts_the_loader_image_size(name):
+    # Real architecture with random weights, so nothing is downloaded. ViT and Swin only accept the size they were
+    # built for, so the builder must match the size the loader produces.
+    model = bcm.model_map[name](pretrained=False)
+    model.reset_classifier(5)
+    model.eval()
+
+    with torch.no_grad():
+        logits = model(torch.zeros(1, 3, *IMAGE_SIZE))
+
+    assert logits.shape == (1, 5)

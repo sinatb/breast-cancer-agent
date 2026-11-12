@@ -7,6 +7,7 @@ import torchvision.transforms as transforms
 from torch.utils.data import DataLoader
 
 from .BreastCancerDataset import BreastCancerDataset
+from .preprocess import IMAGE_SIZE
 from .splits import sample_per_class, split_dataframe
 
 
@@ -15,7 +16,7 @@ def create_dataloaders(
                        random_state = 1381,
                        test_size=0.1,
                        validation_size=0.1,
-                       image_size=(224, 224),
+                       image_size=IMAGE_SIZE,
                        batch_size=64,
                        num_workers=4,
                        samples_per_class=None):

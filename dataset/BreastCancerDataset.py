@@ -4,12 +4,12 @@ import numpy as np
 from PIL import Image
 from torch.utils.data import Dataset
 
-from .preprocess import preprocess
+from .preprocess import IMAGE_SIZE, preprocess
 
 
 class BreastCancerDataset(Dataset):
 
-    def __init__(self, dataframe, images_dir, image_size=(224,224), transform=None):
+    def __init__(self, dataframe, images_dir, image_size=IMAGE_SIZE, transform=None):
         self.df = dataframe
         self.images_dir = images_dir
         self.transform = transform

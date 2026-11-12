@@ -5,8 +5,11 @@ from skimage import measure
 from skimage.feature import peak_local_max
 from skimage.segmentation import watershed
 
+# Input resolution for every model: close to the native 512 px, so small findings survive the resize.
+IMAGE_SIZE = (448, 448)
 
-def preprocess(img_path, target_size=(224, 224), padding=5):
+
+def preprocess(img_path, target_size=IMAGE_SIZE, padding=5):
     img = cv2.imread(str(img_path), cv2.IMREAD_GRAYSCALE)
 
     if img is None:

@@ -217,6 +217,10 @@ experiment. Not yet run on Kaggle.
 
 - [ ] Review a gallery of preprocessing outputs and fix failures, especially white backgrounds and remaining laterality markers.
 - [ ] Preserve aspect ratio by padding, and test higher resolutions (for example 384 or 512) where the model allows.
+  Started (2026-11-12): every model now trains at 448 × 448 (`IMAGE_SIZE` in `dataset/preprocess.py`). ViT and Swin get
+  `img_size=448`, and timm adapts their 224 px weights. Not yet measured. The first Kaggle run at 224 peaked at 0.33
+  validation macro-F1, and every run's bootstrap 95% interval overlapped every other's (best: 0.16–0.48), so the
+  validation set cannot show a difference smaller than about 0.1. Padding is still open.
 - [ ] Add mild augmentation for mammography: small rotations, scale, brightness and contrast. Avoid horizontal flips unless justified, because preprocessing already normalizes orientation.
 - [ ] Compare imbalance methods: softened class weights, focal loss, balanced sampling. The current inverse-frequency weights differ by a factor of about 12.
 - [ ] Try ordinal losses if the labels are ordinal, and a binary high-risk task if that is the clinically useful question.
@@ -286,7 +290,7 @@ tests/
 
 These change the plan and can only be answered by the project owner:
 
-1. **What do labels 1–5 mean?** If they are BI-RADS-like and ordered, this affects the metric, the loss and the high-risk group definition.
+1. **What do labels 1–5 mean?** If they are BI-RADS-like and ordered, this affects the metric, the loss and the high-risk group definition. **Answered (2026-11-12): BI-RADS 1–5, ordered.**
 2. **Where does the dataset come from, and are patient IDs available?** This decides whether group splitting is possible (E7) and whether the data may be uploaded to Kaggle or Colab.
 3. **How much GPU time is available?** This decides the `full` profile. The full G3 design is about 180 comparison runs (15 model-strategy pairs × 4 folds × 3 seeds) plus tuning, so measure time per run (after G4's image caching) before committing to it.
 4. **Will the LLM provider remain Metis?** Confirm that it honors `parallel_tool_calls=False` and is reachable from Kaggle and Colab.
